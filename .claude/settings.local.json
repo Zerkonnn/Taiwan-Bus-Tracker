@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(flutter --version)",
+      "Bash(dart --version)",
+      "Bash(flutter doctor *)",
+      "Bash(where flutter *)",
+      "Bash(flutter pub *)",
+      "Bash(start ms-settings:developers *)",
+      "Bash(flutter analyze *)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Zhuanti project\\\\taiwan_bus_tracker_app\" -Recurse -File)",
+      "Bash(Select-Object FullName)",
+      "Bash(Get-ChildItem \"C:\\\\Zhuanti project\\\\taiwan_bus_tracker_app\" -Recurse)",
+      "Bash(Select-Object FullName, Length)",
+      "Bash(Format-Table -AutoSize)",
+      "PowerShell(git config *)"
+    ]
+  }
+}

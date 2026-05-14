@@ -1,0 +1,38 @@
+name: taiwan_bus_tracker
+description: Real-time bus tracking in Taiwan powered by the PTX API.
+publish_to: none
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # HTTP client for PTX API calls
+  http: ^1.2.0
+
+  # State management (React Query equivalent)
+  flutter_riverpod: ^2.5.1
+
+  # Map (Google Maps)
+  google_maps_flutter: ^2.6.0
+
+  # GPS location
+  geolocator: ^13.0.1
+
+  # Persist favourites
+  shared_preferences: ^2.3.2
+
+  # Camera scan feature
+  image_picker: ^1.1.2
+  google_mlkit_text_recognition: ^0.13.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
