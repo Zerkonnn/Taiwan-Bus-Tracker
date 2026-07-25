@@ -96,6 +96,26 @@ class AppStrings {
       AppLanguage.en: 'No locations found',
       AppLanguage.zh: '找不到地點'
     },
+    'voiceListening': {
+      AppLanguage.en: 'Listening…',
+      AppLanguage.zh: '聆聽中…'
+    },
+    'voiceHoldMicToTalk': {
+      AppLanguage.en: 'Hold the mic and speak',
+      AppLanguage.zh: '按住麥克風說話'
+    },
+    'voiceShowingNearby': {
+      AppLanguage.en: 'Showing nearby stops',
+      AppLanguage.zh: '正在顯示附近站牌'
+    },
+    'voiceNotUnderstood': {
+      AppLanguage.en: "Sorry, I didn't catch that. Try a route number or place name.",
+      AppLanguage.zh: '抱歉，我沒有聽懂，請試著說出路線號碼或地點名稱。'
+    },
+    'voiceUnavailable': {
+      AppLanguage.en: 'Voice input unavailable on this device',
+      AppLanguage.zh: '此裝置無法使用語音輸入'
+    },
 
     // ── Search screen ───────────────────────────────────────────────────
     'enterRouteNumberEllipsis': {
@@ -255,5 +275,17 @@ class AppStrings {
     return lang == AppLanguage.zh
         ? '偵測到號碼（$numbers），但皆未符合台中公車路線。'
         : 'Numbers detected ($numbers) but none matched Taichung bus routes.';
+  }
+
+  static String voiceOpeningRoute(AppLanguage lang, String routeName) {
+    return lang == AppLanguage.zh
+        ? '正在開啟 $routeName 路線'
+        : 'Opening route $routeName';
+  }
+
+  static String voiceFindingDirections(AppLanguage lang, String destination) {
+    return lang == AppLanguage.zh
+        ? '正在查詢往 $destination 的路線'
+        : 'Finding directions to $destination';
   }
 }

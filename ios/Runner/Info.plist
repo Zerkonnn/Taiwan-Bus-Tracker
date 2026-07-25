@@ -51,6 +51,10 @@
 	<string>Point the camera at a bus stop sign to identify route numbers</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Select a photo of a bus stop sign to identify route numbers</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Speak a route number, place, or "nearby" to search hands-free</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Converts your spoken request into a route or location search</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>

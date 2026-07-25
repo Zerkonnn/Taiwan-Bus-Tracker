@@ -9,6 +9,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
+import 'package:speech_to_text/speech_to_text.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 import '../models/bus_models.dart';
 import '../providers/bus_providers.dart';
 import '../services/ptx_api.dart';
@@ -227,10 +229,22 @@ class MapScreen extends ConsumerStatefulWidget {
   ConsumerState<MapScreen> createState() => _MapScreenState();
 }
 
-class _MapScreenState extends ConsumerState<MapScreen> {
+class _MapScreenState extends ConsumerState<MapScreen>
+    with SingleTickerProviderStateMixin {
   GoogleMapController? _mapController;
   final _searchController = TextEditingController();
   final _searchFocus = FocusNode();
+
+  // ─── Voice User Interface (VUI) ─────────────────────────────────────────
+  final _speech = SpeechToText();
+  final _tts = FlutterTts();
+  bool _speechAvailable = false;
+  bool _isListening = false;
+  String _voiceText = '';
+  late final AnimationController _pulseController = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1100),
+  )..repeat();
 
   LatLng? _userLocation;
   bool _locationGranted = false;
@@ -292,6 +306,21 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       }
     });
     _sheetController.addListener(_onSheetExtentChanged);
+    _initSpeech();
+  }
+
+  Future<void> _initSpeech() async {
+    final available = await _speech.initialize(
+      onStatus: (status) {
+        if ((status == 'done' || status == 'notListening') && _isListening) {
+          _stopListening();
+        }
+      },
+      onError: (_) {
+        if (mounted) setState(() => _isListening = false);
+      },
+    );
+    if (mounted) setState(() => _speechAvailable = available);
   }
 
   void _onSheetExtentChanged() {
@@ -308,7 +337,110 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     _busSearchController.dispose();
     _sheetController.removeListener(_onSheetExtentChanged);
     _sheetController.dispose();
+    _pulseController.dispose();
+    _speech.stop();
+    _tts.stop();
     super.dispose();
+  }
+
+  // ─── Voice User Interface (VUI) ──────────────────────────────────────────
+
+  Future<void> _speak(String text) async {
+    await _tts.setLanguage(_lang == AppLanguage.zh ? 'zh-TW' : 'en-US');
+    await _tts.speak(text);
+  }
+
+  Future<void> _startListening() async {
+    if (_isListening) return;
+    if (!_speechAvailable) {
+      _speechAvailable = await _speech.initialize();
+      if (!_speechAvailable) {
+        if (mounted) _speak(AppStrings.t(_lang, 'voiceUnavailable'));
+        return;
+      }
+    }
+    setState(() {
+      _isListening = true;
+      _voiceText = '';
+    });
+    await _speech.listen(
+      onResult: (result) {
+        if (mounted) setState(() => _voiceText = result.recognizedWords);
+      },
+      listenOptions: SpeechListenOptions(
+        localeId: _lang == AppLanguage.zh ? 'zh_TW' : 'en_US',
+      ),
+    );
+  }
+
+  Future<void> _stopListening() async {
+    if (!_isListening) return;
+    await _speech.stop();
+    if (!mounted) return;
+    setState(() => _isListening = false);
+    final text = _voiceText.trim();
+    if (text.isNotEmpty) _processVoiceCommand(text);
+  }
+
+  Future<void> _processVoiceCommand(String text) async {
+    final lower = text.toLowerCase();
+
+    // ── "nearby buses" intent ──────────────────────────────────────────
+    const nearbyKeywords = [
+      'nearby', 'near me', 'buses near', 'close by',
+      '附近', '周邊', '附近站牌', '附近公車',
+    ];
+    if (nearbyKeywords.any((k) => lower.contains(k))) {
+      if (_inRouteDetail) _exitRouteDetail();
+      setState(() => _sheetTab = 0);
+      _sheetController.animateTo(0.38,
+          duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+      _speak(AppStrings.t(_lang, 'voiceShowingNearby'));
+      return;
+    }
+
+    // ── Route number intent (e.g. "route 52", "52", "公車 52") ──────────
+    final routeMatch = RegExp(r'\b\d{1,3}\b').firstMatch(text);
+    if (routeMatch != null) {
+      final routeNum = routeMatch.group(0)!;
+      try {
+        final routes = await PtxApi.instance.searchRoutes(routeNum, defaultCity);
+        final exact = routes.where(
+          (r) => r.routeName.zhTw == routeNum || r.routeName.en == routeNum,
+        );
+        final route =
+            exact.isNotEmpty ? exact.first : (routes.isNotEmpty ? routes.first : null);
+        if (route != null) {
+          _speak(AppStrings.voiceOpeningRoute(_lang, route.routeName.forLang(_lang)));
+          if (mounted) {
+            Navigator.pushNamed(context, '/route_detail', arguments: {
+              'routeName': route.routeName.zhTw,
+              'routeUID': route.routeUID,
+            });
+          }
+          return;
+        }
+      } catch (_) {
+        // Fall through to location matching below
+      }
+    }
+
+    // ── Location / destination intent ────────────────────────────────────
+    final popularMatch = _filterPopular(text);
+    if (popularMatch.isNotEmpty) {
+      _speak(AppStrings.voiceFindingDirections(_lang, popularMatch.first.shortName));
+      _selectSuggestion(popularMatch.first);
+      return;
+    }
+
+    final nomResults = await _nominatimSearch(text, _userLocation ?? _defaultCenter);
+    if (nomResults.isNotEmpty && mounted) {
+      _speak(AppStrings.voiceFindingDirections(_lang, nomResults.first.shortName));
+      _selectSuggestion(nomResults.first);
+      return;
+    }
+
+    _speak(AppStrings.t(_lang, 'voiceNotUnderstood'));
   }
 
   Future<void> _requestLocation() async {
@@ -1361,6 +1493,61 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               );
             },
           ),
+
+          // ── Voice mic button — tracks the sheet's live top edge exactly
+          // like GoogleMap does, so it never sits underneath the sheet.
+          Positioned(
+            bottom: (_sheetExtent * MediaQuery.sizeOf(context).height) + 16,
+            right: 12,
+            child: _VoiceMicButton(
+              isListening: _isListening,
+              pulse: _pulseController,
+              onHoldStart: _startListening,
+              onHoldEnd: _stopListening,
+            ),
+          ),
+
+          // ── Live transcription bubble while listening ──────────────────
+          if (_isListening)
+            Positioned(
+              bottom: (_sheetExtent * MediaQuery.sizeOf(context).height) + 72,
+              left: 20,
+              right: 68,
+              child: IgnorePointer(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xF21F2330),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                        color: AppColors.blue.withValues(alpha: 0.5)),
+                    boxShadow: const [
+                      BoxShadow(
+                          color: Colors.black38,
+                          blurRadius: 8,
+                          offset: Offset(0, 3))
+                    ],
+                  ),
+                  child: Row(children: [
+                    const Icon(Icons.graphic_eq_rounded,
+                        color: AppColors.blue, size: 16),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _voiceText.isEmpty
+                            ? AppStrings.t(_lang, 'voiceListening')
+                            : _voiceText,
+                        style: const TextStyle(
+                            color: AppColors.textPrimary, fontSize: 13),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ]),
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -2191,6 +2378,74 @@ class _SuggestionTile extends StatelessWidget {
             ),
             const Icon(Icons.north_west_rounded,
                 color: AppColors.textMuted, size: 13),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _VoiceMicButton extends StatelessWidget {
+  final bool isListening;
+  final AnimationController pulse;
+  final VoidCallback onHoldStart;
+  final VoidCallback onHoldEnd;
+
+  const _VoiceMicButton({
+    required this.isListening,
+    required this.pulse,
+    required this.onHoldStart,
+    required this.onHoldEnd,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onLongPressStart: (_) => onHoldStart(),
+      onLongPressEnd: (_) => onHoldEnd(),
+      onLongPressCancel: onHoldEnd,
+      child: SizedBox(
+        width: 64,
+        height: 64,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            if (isListening)
+              AnimatedBuilder(
+                animation: pulse,
+                builder: (context, _) {
+                  final t = pulse.value;
+                  return Container(
+                    width: 52 * (1 + t * 0.7),
+                    height: 52 * (1 + t * 0.7),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: AppColors.red.withValues(alpha: (1 - t) * 0.35),
+                    ),
+                  );
+                },
+              ),
+            Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: isListening ? AppColors.red : const Color(0xCC1F2330),
+                border: Border.all(
+                    color: isListening ? AppColors.red : AppColors.border),
+                boxShadow: const [
+                  BoxShadow(
+                      color: Colors.black38,
+                      blurRadius: 8,
+                      offset: Offset(0, 3))
+                ],
+              ),
+              child: Icon(
+                isListening ? Icons.mic_rounded : Icons.mic_none_rounded,
+                color: isListening ? Colors.white : AppColors.blue,
+                size: 24,
+              ),
+            ),
           ],
         ),
       ),
