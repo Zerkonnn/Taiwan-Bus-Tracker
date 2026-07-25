@@ -1,9 +1,10 @@
-// FavouritesScreen — saved routes (persisted to SharedPreferences)
+﻿// FavouritesScreen â€” saved routes (persisted to SharedPreferences)
 // Mirrors src/screens/FavouritesScreen.tsx
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/bus_providers.dart';
+import '../utils/app_strings.dart';
 import '../utils/theme.dart';
 import '../widgets/bus_badge.dart';
 
@@ -13,6 +14,7 @@ class FavouritesScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final favourites = ref.watch(favouritesProvider);
+    final lang = ref.watch(languageProvider);
 
     return Scaffold(
       backgroundColor: AppColors.bg,
@@ -20,11 +22,11 @@ class FavouritesScreen extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(16, 16, 16, 16),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
               child: Text(
-                'Saved Routes',
-                style: TextStyle(
+                AppStrings.t(lang, 'savedRoutesTitle'),
+                style: const TextStyle(
                   color: AppColors.textPrimary,
                   fontSize: 22,
                   fontWeight: FontWeight.w500,
@@ -34,6 +36,7 @@ class FavouritesScreen extends ConsumerWidget {
             Expanded(
               child: favourites.isEmpty
                   ? _EmptyState(
+                      lang: lang,
                       onSearchTap: () =>
                           Navigator.pushNamed(context, '/search'),
                     )
@@ -47,6 +50,7 @@ class FavouritesScreen extends ConsumerWidget {
                         final routeName = favourites[i];
                         return _FavRow(
                           routeName: routeName,
+                          lang: lang,
                           onTap: () => Navigator.pushNamed(
                             context,
                             '/route_detail',
@@ -71,11 +75,13 @@ class FavouritesScreen extends ConsumerWidget {
 
 class _FavRow extends StatelessWidget {
   final String routeName;
+  final AppLanguage lang;
   final VoidCallback onTap;
   final VoidCallback onRemove;
 
   const _FavRow({
     required this.routeName,
+    required this.lang,
     required this.onTap,
     required this.onRemove,
   });
@@ -97,7 +103,7 @@ class _FavRow extends StatelessWidget {
             const SizedBox(width: 12),
             Expanded(
               child: Text(
-                'Route $routeName',
+                AppStrings.route(lang, routeName),
                 style: const TextStyle(
                   color: AppColors.textPrimary,
                   fontSize: 14,
@@ -121,8 +127,9 @@ class _FavRow extends StatelessWidget {
 }
 
 class _EmptyState extends StatelessWidget {
+  final AppLanguage lang;
   final VoidCallback onSearchTap;
-  const _EmptyState({required this.onSearchTap});
+  const _EmptyState({required this.lang, required this.onSearchTap});
 
   @override
   Widget build(BuildContext context) {
@@ -135,18 +142,18 @@ class _EmptyState extends StatelessWidget {
             const Icon(Icons.star_outline_rounded,
                 color: AppColors.textMuted, size: 48),
             const SizedBox(height: 12),
-            const Text(
-              'No saved routes yet',
-              style: TextStyle(
+            Text(
+              AppStrings.t(lang, 'noSavedRoutesYet'),
+              style: const TextStyle(
                   color: AppColors.textSecondary,
                   fontSize: 16,
                   fontWeight: FontWeight.w500),
             ),
             const SizedBox(height: 8),
-            const Text(
-              'Star a route on its detail page to save it here',
+            Text(
+              AppStrings.t(lang, 'starRouteHint'),
               textAlign: TextAlign.center,
-              style: TextStyle(
+              style: const TextStyle(
                   color: AppColors.textMuted,
                   fontSize: 13,
                   height: 1.5),
@@ -161,15 +168,16 @@ class _EmptyState extends StatelessWidget {
                   color: AppColors.bgCard,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                      color: AppColors.blue.withOpacity(0.4)),
+                      color: AppColors.blue.withValues(alpha: 0.4)),
                 ),
-                child: const Row(
+                child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.search, color: AppColors.blue, size: 16),
-                    SizedBox(width: 8),
-                    Text('Search Routes',
-                        style: TextStyle(
+                    const Icon(Icons.search,
+                        color: AppColors.blue, size: 16),
+                    const SizedBox(width: 8),
+                    Text(AppStrings.t(lang, 'searchRoutesTitle'),
+                        style: const TextStyle(
                             color: AppColors.blue,
                             fontSize: 14,
                             fontWeight: FontWeight.w500)),

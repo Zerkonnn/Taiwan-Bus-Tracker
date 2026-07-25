@@ -160,10 +160,23 @@ class PtxApi {
 
   // ─── Route Search ──────────────────────────────────────────────────────────
 
-  Future<List<BusRoute>> searchRoutes(String routeName, String city) {
+  Future<List<BusRoute>> searchRoutes(String routeName, String city) async {
     if (_demoMode) return Future.value(_demoSearchRoutes(routeName));
-    return _getList('/Route/City/$city/${Uri.encodeComponent(routeName)}',
-        {}, BusRoute.fromJson);
+    final results = await _getList(
+        '/Route/City/$city/${Uri.encodeComponent(routeName)}',
+        {},
+        BusRoute.fromJson);
+    // PTX returns every route whose name *contains* the query (e.g. "52" also
+    // matches "152", "252"...). Put exact matches first so the route the user
+    // actually searched for isn't buried under unrelated substring matches.
+    bool isExact(BusRoute r) =>
+        r.routeName.zhTw == routeName || r.routeName.en == routeName;
+    results.sort((a, b) {
+      final aExact = isExact(a), bExact = isExact(b);
+      if (aExact != bExact) return aExact ? -1 : 1;
+      return 0;
+    });
+    return results;
   }
 
   // ─── Live Bus Positions ────────────────────────────────────────────────────

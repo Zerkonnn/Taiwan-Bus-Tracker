@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/bus_models.dart';
 import '../services/ptx_api.dart';
+import '../utils/app_strings.dart';
 
 // ─── Route Search ─────────────────────────────────────────────────────────────
 // Triggered by the search screen; query must be non-empty.
@@ -22,8 +23,7 @@ final routeSearchProvider =
   },
 );
 
-// ─── Live Bus Positions — polls every 20 s ───────────────────────────────────
-// Less frequent than arrival estimates; used for map markers only.
+// ─── Live Bus Positions — polls every 30 s ───────────────────────────────────
 
 typedef RouteParams = ({String routeName, String city});
 
@@ -38,12 +38,12 @@ final busPositionsProvider =
       } catch (_) {
         // On error keep previous value — don't wipe the display
       }
-      await Future.delayed(const Duration(seconds: 20));
+      await Future.delayed(const Duration(seconds: 30));
     }
   },
 );
 
-// ─── Arrival Estimates — polls every 15 s ────────────────────────────────────
+// ─── Arrival Estimates — polls every 30 s ────────────────────────────────────
 
 final arrivalEstimatesProvider =
     StreamProvider.autoDispose.family<List<EstimatedArrival>, RouteParams>(
@@ -56,12 +56,12 @@ final arrivalEstimatesProvider =
       } catch (_) {
         // On error keep previous value — don't wipe the display
       }
-      await Future.delayed(const Duration(seconds: 15));
+      await Future.delayed(const Duration(seconds: 30));
     }
   },
 );
 
-// ─── Stop Arrivals — polls every 15 s ─────────────────────────────────────────
+// ─── Stop Arrivals — polls every 30 s ─────────────────────────────────────────
 
 typedef StopParams = ({String stopUID, String city});
 
@@ -76,7 +76,7 @@ final stopArrivalsProvider =
       } catch (_) {
         // On error keep previous value — don't wipe the display
       }
-      await Future.delayed(const Duration(seconds: 15));
+      await Future.delayed(const Duration(seconds: 30));
     }
   },
 );
@@ -128,4 +128,30 @@ class FavouritesNotifier extends StateNotifier<List<String>> {
 final favouritesProvider =
     StateNotifierProvider<FavouritesNotifier, List<String>>(
   (ref) => FavouritesNotifier(),
+);
+
+// ─── Language (persisted via SharedPreferences) ────────────────────────────
+
+class LanguageNotifier extends StateNotifier<AppLanguage> {
+  LanguageNotifier() : super(AppLanguage.zh) {
+    _load();
+  }
+
+  static const _key = 'language';
+
+  Future<void> _load() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getString(_key);
+    if (saved == 'en') state = AppLanguage.en;
+  }
+
+  Future<void> toggle() async {
+    state = state == AppLanguage.zh ? AppLanguage.en : AppLanguage.zh;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_key, state == AppLanguage.en ? 'en' : 'zh');
+  }
+}
+
+final languageProvider = StateNotifierProvider<LanguageNotifier, AppLanguage>(
+  (ref) => LanguageNotifier(),
 );

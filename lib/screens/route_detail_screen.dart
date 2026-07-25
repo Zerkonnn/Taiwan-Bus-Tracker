@@ -1,14 +1,15 @@
-// RouteDetailScreen — stop list with live ETAs and direction toggle
+﻿// RouteDetailScreen â€” stop list with live ETAs and direction toggle
 // Mirrors src/screens/RouteDetailScreen.tsx
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/bus_models.dart';
 import '../providers/bus_providers.dart';
+import '../utils/app_strings.dart';
 import '../utils/theme.dart';
 import '../widgets/bus_badge.dart';
 
-// Taichung city buses typically operate 06:00–23:00.
+// Taichung city buses typically operate 06:00â€“23:00.
 bool _outsideServiceHours() {
   final h = DateTime.now().hour;
   return h < 6 || h >= 23;
@@ -30,7 +31,7 @@ class RouteDetailScreen extends ConsumerStatefulWidget {
 }
 
 class _RouteDetailScreenState extends ConsumerState<RouteDetailScreen> {
-  int _direction = 0; // 0 = 去程, 1 = 回程
+  int _direction = 0; // 0 = åŽ»ç¨‹, 1 = å›žç¨‹
 
   @override
   Widget build(BuildContext context) {
@@ -41,6 +42,7 @@ class _RouteDetailScreenState extends ConsumerState<RouteDetailScreen> {
     final stopsAsync = ref.watch(routeStopsProvider(params));
     final favourites = ref.watch(favouritesProvider);
     final isFav = favourites.contains(widget.routeName);
+    final lang = ref.watch(languageProvider);
 
     // Direction-filtered stops
     final stops = stopsAsync.value
@@ -48,7 +50,7 @@ class _RouteDetailScreenState extends ConsumerState<RouteDetailScreen> {
             .toList() ??
         [];
 
-    // stopUID → earliest ETA for this direction
+    // stopUID â†’ earliest ETA for this direction
     final arrivalMap = <String, int>{};
     final dirArrivals = arrivalsAsync.value
             ?.where((a) => a.direction == _direction)
@@ -66,7 +68,7 @@ class _RouteDetailScreenState extends ConsumerState<RouteDetailScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // ── Header ────────────────────────────────────────────────────
+            // â”€â”€ Header â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             Padding(
               padding: const EdgeInsets.fromLTRB(4, 8, 16, 8),
               child: Row(
@@ -94,7 +96,7 @@ class _RouteDetailScreenState extends ConsumerState<RouteDetailScreen> {
               ),
             ),
 
-            // ── Live bus count ────────────────────────────────────────────
+            // â”€â”€ Live bus count â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             Padding(
               padding:
                   const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -110,19 +112,20 @@ class _RouteDetailScreenState extends ConsumerState<RouteDetailScreen> {
                   ),
                   const SizedBox(width: 6),
                   Text(
-                    '${positionsAsync.value?.length ?? 0} buses in service',
+                    AppStrings.busesInService(
+                        lang, positionsAsync.value?.length ?? 0),
                     style: const TextStyle(
                         color: AppColors.textSecondary, fontSize: 13),
                   ),
                   const Spacer(),
-                  const Text('Updates every 30s',
-                      style: TextStyle(
+                  Text(AppStrings.t(lang, 'updatesEvery30s'),
+                      style: const TextStyle(
                           color: AppColors.textMuted, fontSize: 11)),
                 ],
               ),
             ),
 
-            // ── Direction toggle ──────────────────────────────────────────
+            // â”€â”€ Direction toggle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             Padding(
               padding:
                   const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -135,12 +138,12 @@ class _RouteDetailScreenState extends ConsumerState<RouteDetailScreen> {
                 child: Row(
                   children: [
                     _DirButton(
-                      label: 'Outbound',
+                      label: AppStrings.t(lang, 'outbound'),
                       active: _direction == 0,
                       onTap: () => setState(() => _direction = 0),
                     ),
                     _DirButton(
-                      label: 'Inbound',
+                      label: AppStrings.t(lang, 'inbound'),
                       active: _direction == 1,
                       onTap: () => setState(() => _direction = 1),
                     ),
@@ -149,7 +152,7 @@ class _RouteDetailScreenState extends ConsumerState<RouteDetailScreen> {
               ),
             ),
 
-            // ── Service hours warning ─────────────────────────────────────
+            // â”€â”€ Service hours warning â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             if (_outsideServiceHours() &&
                 (positionsAsync.value?.isEmpty ?? true))
               Container(
@@ -157,26 +160,26 @@ class _RouteDetailScreenState extends ConsumerState<RouteDetailScreen> {
                 padding: const EdgeInsets.symmetric(
                     horizontal: 12, vertical: 8),
                 decoration: BoxDecoration(
-                  color: AppColors.yellow.withOpacity(0.1),
+                  color: AppColors.yellow.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
-                      color: AppColors.yellow.withOpacity(0.3)),
+                      color: AppColors.yellow.withValues(alpha: 0.3)),
                 ),
                 child: Row(children: [
                   const Icon(Icons.schedule_rounded,
                       color: AppColors.yellow, size: 14),
                   const SizedBox(width: 8),
-                  const Expanded(
+                  Expanded(
                     child: Text(
-                      'Bus service is inactive right now (operating hours: 06:00–23:00). Stop list is still available.',
-                      style: TextStyle(
+                      AppStrings.t(lang, 'serviceInactiveLong'),
+                      style: const TextStyle(
                           color: AppColors.yellow, fontSize: 11),
                     ),
                   ),
                 ]),
               ),
 
-            // ── Stop list ─────────────────────────────────────────────────
+            // â”€â”€ Stop list â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             Expanded(
               child: stopsAsync.when(
                 loading: () => const Center(
@@ -191,8 +194,8 @@ class _RouteDetailScreenState extends ConsumerState<RouteDetailScreen> {
                       const SizedBox(height: 12),
                       Text(
                         e.toString().contains('Rate limited')
-                            ? 'Too many requests\nWait a moment and retry'
-                            : 'Could not load stops',
+                            ? AppStrings.t(lang, 'tooManyRequestsRetry')
+                            : AppStrings.t(lang, 'couldNotLoadStops'),
                         textAlign: TextAlign.center,
                         style: const TextStyle(
                             color: AppColors.textMuted, fontSize: 13),
@@ -200,15 +203,15 @@ class _RouteDetailScreenState extends ConsumerState<RouteDetailScreen> {
                       const SizedBox(height: 16),
                       TextButton(
                         onPressed: () => ref.invalidate(routeStopsProvider(params)),
-                        child: const Text('Retry',
-                            style: TextStyle(color: AppColors.blue)),
+                        child: Text(AppStrings.t(lang, 'retry'),
+                            style: const TextStyle(color: AppColors.blue)),
                       ),
                     ],
                   ),
                 ),
                 data: (_) {
                   if (stops.isEmpty) {
-                    return const _EmptyStops();
+                    return _EmptyStops(lang: lang);
                   }
                   return RefreshIndicator(
                     color: AppColors.blue,
@@ -230,6 +233,7 @@ class _RouteDetailScreenState extends ConsumerState<RouteDetailScreen> {
                           eta: eta,
                           hasBus: hasBus,
                           isLast: isLast,
+                          lang: lang,
                         );
                       },
                     ),
@@ -286,119 +290,129 @@ class _StopRow extends StatelessWidget {
   final int? eta;
   final bool hasBus;
   final bool isLast;
+  final AppLanguage lang;
 
   const _StopRow({
     required this.stop,
     required this.eta,
     required this.hasBus,
     required this.isLast,
+    required this.lang,
   });
 
   @override
   Widget build(BuildContext context) {
-    return IntrinsicHeight(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Timeline
-          SizedBox(
-            width: 24,
-            child: Column(
-              children: [
-                Container(
-                  width: 12,
-                  height: 12,
-                  margin: const EdgeInsets.only(top: 4),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: hasBus ? AppColors.green : AppColors.bgCard,
-                    border: Border.all(
-                      color: hasBus ? AppColors.green : AppColors.border,
-                      width: 2,
-                    ),
-                  ),
-                ),
-                if (!isLast)
-                  Expanded(
-                    child: Container(
-                      width: 2,
-                      color: hasBus
-                          ? AppColors.green.withOpacity(0.33)
-                          : AppColors.border,
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 12),
-          // Stop info
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: 16, top: 2),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => Navigator.pushNamed(context, '/stop_detail', arguments: {
+        'stopUID': stop.stopUID,
+        'stopName': stop.stopName.forLang(lang),
+      }),
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Timeline
+            SizedBox(
+              width: 24,
+              child: Column(
                 children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          stop.stopName.zhTw,
-                          style: TextStyle(
-                            color: hasBus
-                                ? AppColors.textPrimary
-                                : AppColors.textSecondary,
-                            fontSize: 14,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        if (eta != null)
-                          Text(
-                            formatEta(eta!),
-                            style: TextStyle(
-                                color: etaColor(eta!), fontSize: 12),
-                          )
-                        else
-                          const Text('—',
-                              style: TextStyle(
-                                  color: AppColors.textMuted,
-                                  fontSize: 12)),
-                      ],
+                  Container(
+                    width: 12,
+                    height: 12,
+                    margin: const EdgeInsets.only(top: 4),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: hasBus ? AppColors.green : AppColors.bgCard,
+                      border: Border.all(
+                        color: hasBus ? AppColors.green : AppColors.border,
+                        width: 2,
+                      ),
                     ),
                   ),
-                  if (hasBus)
-                    Container(
-                      padding: const EdgeInsets.all(6),
-                      margin: const EdgeInsets.only(top: 2),
-                      decoration: BoxDecoration(
-                        color: AppColors.green.withOpacity(0.13),
-                        borderRadius: BorderRadius.circular(8),
+                  if (!isLast)
+                    Expanded(
+                      child: Container(
+                        width: 2,
+                        color: hasBus
+                            ? AppColors.green.withValues(alpha: 0.33)
+                            : AppColors.border,
                       ),
-                      child: const Icon(Icons.directions_bus_rounded,
-                          color: AppColors.green, size: 14),
                     ),
                 ],
               ),
             ),
-          ),
-        ],
+            const SizedBox(width: 12),
+            // Stop info
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 16, top: 2),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            stop.stopName.forLang(lang),
+                            style: TextStyle(
+                              color: hasBus
+                                  ? AppColors.textPrimary
+                                  : AppColors.textSecondary,
+                              fontSize: 14,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          if (eta != null)
+                            Text(
+                              formatEta(eta!, lang),
+                              style: TextStyle(
+                                  color: etaColor(eta!), fontSize: 12),
+                            )
+                          else
+                            const Text('â€”',
+                                style: TextStyle(
+                                    color: AppColors.textMuted,
+                                    fontSize: 12)),
+                        ],
+                      ),
+                    ),
+                    if (hasBus)
+                      Container(
+                        padding: const EdgeInsets.all(6),
+                        margin: const EdgeInsets.only(top: 2),
+                        decoration: BoxDecoration(
+                          color: AppColors.green.withValues(alpha: 0.13),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(Icons.directions_bus_rounded,
+                            color: AppColors.green, size: 14),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
 class _EmptyStops extends StatelessWidget {
-  const _EmptyStops();
+  final AppLanguage lang;
+  const _EmptyStops({required this.lang});
   @override
-  Widget build(BuildContext context) => const Center(
+  Widget build(BuildContext context) => Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.directions_bus_outlined,
+            const Icon(Icons.directions_bus_outlined,
                 color: AppColors.textMuted, size: 40),
-            SizedBox(height: 12),
-            Text('No stop data',
-                style: TextStyle(
+            const SizedBox(height: 12),
+            Text(AppStrings.t(lang, 'noStopData'),
+                style: const TextStyle(
                     color: AppColors.textMuted, fontSize: 14)),
           ],
         ),

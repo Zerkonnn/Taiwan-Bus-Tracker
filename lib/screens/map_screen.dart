@@ -1,4 +1,4 @@
-// MapScreen — Google Maps + TDX Taichung Bus API
+﻿// MapScreen â€” Google Maps + TDX Taichung Bus API
 // Google Maps handles the interactive map; TDX provides accurate live bus
 // positions, ETAs, route stop positions (for polylines), and nearby stops.
 
@@ -12,37 +12,16 @@ import 'package:http/http.dart' as http;
 import '../models/bus_models.dart';
 import '../providers/bus_providers.dart';
 import '../services/ptx_api.dart';
+import '../utils/app_strings.dart';
 import '../utils/theme.dart';
-import '../widgets/bus_card.dart';
-import '../widgets/nearby_stop_chip.dart';
 
 const _defaultCenter = LatLng(24.1477, 120.6736);
 
-// Replace with your own key from console.cloud.google.com
-// Needs: Maps SDK for Android + Directions API both enabled
-const _googleMapsApiKey = 'AIzaSyDJRoC6WEgAqoTC60-Be7_ymNHw1CH9czE';
+// Same key used for Maps SDK in AndroidManifest.xml â€” must also have
+// Directions API enabled in Google Cloud Console for this project.
+const _googleMapsApiKey = 'AIzaSyDUPCYVGg1mKjrkzbBtSsaopGXbY8SDj18';
 
-// Colors used for nearby-stop chips in the bottom panel
-const _chipColors = [
-  AppColors.green,
-  AppColors.yellow,
-  AppColors.red,
-  AppColors.blue,
-  AppColors.green,
-  AppColors.yellow,
-];
-
-// Matching Google Maps hues for the stop markers on the map
-const _stopHues = [
-  BitmapDescriptor.hueGreen,
-  BitmapDescriptor.hueYellow,
-  BitmapDescriptor.hueRed,
-  BitmapDescriptor.hueAzure,
-  BitmapDescriptor.hueGreen,
-  BitmapDescriptor.hueYellow,
-];
-
-// ─── Popular Taiwan locations (instant search fallback) ───────────────────────
+// â”€â”€â”€ Popular Taiwan locations (instant search fallback) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class _LocationResult {
   final String shortName;    // Chinese name (or Nominatim result)
@@ -72,55 +51,55 @@ class _LocationResult {
 }
 
 const _popularLocations = [
-  _LocationResult(shortName: '逢甲大學', shortNameEn: 'Feng Chia University', displayName: '台中市西屯區逢甲大學', lat: 24.1800, lon: 120.6445),
-  _LocationResult(shortName: '台中火車站', shortNameEn: 'Taichung Train Station', displayName: '台中市中區台中火車站', lat: 24.1369, lon: 120.6852),
-  _LocationResult(shortName: '台中市政府', shortNameEn: 'Taichung City Hall', displayName: '台中市西屯區市政北二路', lat: 24.1634, lon: 120.6469),
-  _LocationResult(shortName: '國立中興大學', shortNameEn: 'Nat\'l Chung Hsing University (NCHU)', displayName: '台中市南區興大路145號', lat: 24.1170, lon: 120.6752),
-  _LocationResult(shortName: '台中榮總', shortNameEn: 'Taichung Veterans General Hospital', displayName: '台中市西屯區台灣大道四段1650號', lat: 24.1731, lon: 120.6362),
-  _LocationResult(shortName: '朝馬轉運站', shortNameEn: 'Chaoma Bus Terminal', displayName: '台中市西屯區朝馬三路', lat: 24.1548, lon: 120.6245),
-  _LocationResult(shortName: '高鐵台中站', shortNameEn: 'Taichung HSR Station', displayName: '台中市烏日區站區二路', lat: 24.0626, lon: 120.6854),
-  _LocationResult(shortName: '台中機場', shortNameEn: 'Taichung Airport', displayName: '台中市清水區鎮南路', lat: 24.2641, lon: 120.6208),
-  _LocationResult(shortName: '一中商圈', shortNameEn: 'First High School Shopping Area', displayName: '台中市北區育才街一帶', lat: 24.1534, lon: 120.6869),
-  _LocationResult(shortName: '中友百貨', shortNameEn: 'Chung Yu Department Store', displayName: '台中市中區三民路三段', lat: 24.1456, lon: 120.6819),
-  _LocationResult(shortName: '台中國家歌劇院', shortNameEn: 'National Taichung Theater', displayName: '台中市西屯區惠來路二段101號', lat: 24.1630, lon: 120.6447),
-  _LocationResult(shortName: '新光三越台中中港', shortNameEn: 'Shin Kong Mitsukoshi Taichung', displayName: '台中市西屯區台灣大道三段301號', lat: 24.1634, lon: 120.6469),
-  _LocationResult(shortName: '大里市區', shortNameEn: 'Dali District', displayName: '台中市大里區', lat: 24.0999, lon: 120.6784),
-  _LocationResult(shortName: '豐原火車站', shortNameEn: 'Fengyuan Train Station', displayName: '台中市豐原區圓環南路', lat: 24.2519, lon: 120.7188),
-  _LocationResult(shortName: '東海大學', shortNameEn: 'Tunghai University', displayName: '台中市龍井區台灣大道四段1727號', lat: 24.1792, lon: 120.5993),
+  _LocationResult(shortName: 'é€¢ç”²å¤§å­¸', shortNameEn: 'Feng Chia University', displayName: 'å°ä¸­å¸‚è¥¿å±¯å€é€¢ç”²å¤§å­¸', lat: 24.1800, lon: 120.6445),
+  _LocationResult(shortName: 'å°ä¸­ç«è»Šç«™', shortNameEn: 'Taichung Train Station', displayName: 'å°ä¸­å¸‚ä¸­å€å°ä¸­ç«è»Šç«™', lat: 24.1369, lon: 120.6852),
+  _LocationResult(shortName: 'å°ä¸­å¸‚æ”¿åºœ', shortNameEn: 'Taichung City Hall', displayName: 'å°ä¸­å¸‚è¥¿å±¯å€å¸‚æ”¿åŒ—äºŒè·¯', lat: 24.1634, lon: 120.6469),
+  _LocationResult(shortName: 'åœ‹ç«‹ä¸­èˆˆå¤§å­¸', shortNameEn: 'Nat\'l Chung Hsing University (NCHU)', displayName: 'å°ä¸­å¸‚å—å€èˆˆå¤§è·¯145è™Ÿ', lat: 24.1170, lon: 120.6752),
+  _LocationResult(shortName: 'å°ä¸­æ¦®ç¸½', shortNameEn: 'Taichung Veterans General Hospital', displayName: 'å°ä¸­å¸‚è¥¿å±¯å€å°ç£å¤§é“å››æ®µ1650è™Ÿ', lat: 24.1731, lon: 120.6362),
+  _LocationResult(shortName: 'æœé¦¬è½‰é‹ç«™', shortNameEn: 'Chaoma Bus Terminal', displayName: 'å°ä¸­å¸‚è¥¿å±¯å€æœé¦¬ä¸‰è·¯', lat: 24.1548, lon: 120.6245),
+  _LocationResult(shortName: 'é«˜éµå°ä¸­ç«™', shortNameEn: 'Taichung HSR Station', displayName: 'å°ä¸­å¸‚çƒæ—¥å€ç«™å€äºŒè·¯', lat: 24.0626, lon: 120.6854),
+  _LocationResult(shortName: 'å°ä¸­æ©Ÿå ´', shortNameEn: 'Taichung Airport', displayName: 'å°ä¸­å¸‚æ¸…æ°´å€éŽ®å—è·¯', lat: 24.2641, lon: 120.6208),
+  _LocationResult(shortName: 'ä¸€ä¸­å•†åœˆ', shortNameEn: 'First High School Shopping Area', displayName: 'å°ä¸­å¸‚åŒ—å€è‚²æ‰è¡—ä¸€å¸¶', lat: 24.1534, lon: 120.6869),
+  _LocationResult(shortName: 'ä¸­å‹ç™¾è²¨', shortNameEn: 'Chung Yu Department Store', displayName: 'å°ä¸­å¸‚ä¸­å€ä¸‰æ°‘è·¯ä¸‰æ®µ', lat: 24.1456, lon: 120.6819),
+  _LocationResult(shortName: 'å°ä¸­åœ‹å®¶æ­ŒåŠ‡é™¢', shortNameEn: 'National Taichung Theater', displayName: 'å°ä¸­å¸‚è¥¿å±¯å€æƒ ä¾†è·¯äºŒæ®µ101è™Ÿ', lat: 24.1630, lon: 120.6447),
+  _LocationResult(shortName: 'æ–°å…‰ä¸‰è¶Šå°ä¸­ä¸­æ¸¯', shortNameEn: 'Shin Kong Mitsukoshi Taichung', displayName: 'å°ä¸­å¸‚è¥¿å±¯å€å°ç£å¤§é“ä¸‰æ®µ301è™Ÿ', lat: 24.1634, lon: 120.6469),
+  _LocationResult(shortName: 'å¤§é‡Œå¸‚å€', shortNameEn: 'Dali District', displayName: 'å°ä¸­å¸‚å¤§é‡Œå€', lat: 24.0999, lon: 120.6784),
+  _LocationResult(shortName: 'è±åŽŸç«è»Šç«™', shortNameEn: 'Fengyuan Train Station', displayName: 'å°ä¸­å¸‚è±åŽŸå€åœ“ç’°å—è·¯', lat: 24.2519, lon: 120.7188),
+  _LocationResult(shortName: 'æ±æµ·å¤§å­¸', shortNameEn: 'Tunghai University', displayName: 'å°ä¸­å¸‚é¾äº•å€å°ç£å¤§é“å››æ®µ1727è™Ÿ', lat: 24.1792, lon: 120.5993),
 ];
 
 const _aliases = <String, String>{
-  // Feng Chia University — covers romanised, phonetic Mandarin, and abbreviation
-  'fengchia': '逢甲大學', 'feng chia': '逢甲大學', 'fengjia': '逢甲大學',
-  'feng jia': '逢甲大學', 'fcu': '逢甲大學', 'feng chia university': '逢甲大學',
+  // Feng Chia University â€” covers romanised, phonetic Mandarin, and abbreviation
+  'fengchia': 'é€¢ç”²å¤§å­¸', 'feng chia': 'é€¢ç”²å¤§å­¸', 'fengjia': 'é€¢ç”²å¤§å­¸',
+  'feng jia': 'é€¢ç”²å¤§å­¸', 'fcu': 'é€¢ç”²å¤§å­¸', 'feng chia university': 'é€¢ç”²å¤§å­¸',
 
   // Taichung Train Station
-  'taichung station': '台中火車站', 'train station': '台中火車站',
-  'taichung railway': '台中火車站', 'taichung train': '台中火車站',
-  'huo che zhan': '台中火車站',
+  'taichung station': 'å°ä¸­ç«è»Šç«™', 'train station': 'å°ä¸­ç«è»Šç«™',
+  'taichung railway': 'å°ä¸­ç«è»Šç«™', 'taichung train': 'å°ä¸­ç«è»Šç«™',
+  'huo che zhan': 'å°ä¸­ç«è»Šç«™',
 
   // City Hall
-  'city hall': '台中市政府', 'taichung city hall': '台中市政府',
+  'city hall': 'å°ä¸­å¸‚æ”¿åºœ', 'taichung city hall': 'å°ä¸­å¸‚æ”¿åºœ',
 
-  // NCHU — covers full English name and common abbreviations
-  'nchu': '國立中興大學', 'chung hsing': '國立中興大學',
-  'national chung hsing': '國立中興大學',
-  'chung hsing university': '國立中興大學',
-  'zhong xing': '國立中興大學', 'zhongxing': '國立中興大學',
+  // NCHU â€” covers full English name and common abbreviations
+  'nchu': 'åœ‹ç«‹ä¸­èˆˆå¤§å­¸', 'chung hsing': 'åœ‹ç«‹ä¸­èˆˆå¤§å­¸',
+  'national chung hsing': 'åœ‹ç«‹ä¸­èˆˆå¤§å­¸',
+  'chung hsing university': 'åœ‹ç«‹ä¸­èˆˆå¤§å­¸',
+  'zhong xing': 'åœ‹ç«‹ä¸­èˆˆå¤§å­¸', 'zhongxing': 'åœ‹ç«‹ä¸­èˆˆå¤§å­¸',
 
   // THSR
-  'thsr': '高鐵台中站', 'hsr': '高鐵台中站', 'high speed': '高鐵台中站',
-  'taichung hsr': '高鐵台中站', 'gaotie': '高鐵台中站',
+  'thsr': 'é«˜éµå°ä¸­ç«™', 'hsr': 'é«˜éµå°ä¸­ç«™', 'high speed': 'é«˜éµå°ä¸­ç«™',
+  'taichung hsr': 'é«˜éµå°ä¸­ç«™', 'gaotie': 'é«˜éµå°ä¸­ç«™',
 
   // Tunghai University
-  'tunghai': '東海大學', 'dong hai': '東海大學',
-  'tunghai university': '東海大學', 'thu': '東海大學',
+  'tunghai': 'æ±æµ·å¤§å­¸', 'dong hai': 'æ±æµ·å¤§å­¸',
+  'tunghai university': 'æ±æµ·å¤§å­¸', 'thu': 'æ±æµ·å¤§å­¸',
 
   // Airport
-  'airport': '台中機場', 'taichung airport': '台中機場',
+  'airport': 'å°ä¸­æ©Ÿå ´', 'taichung airport': 'å°ä¸­æ©Ÿå ´',
 
   // Veterans General Hospital
-  'veterans': '台中榮總', 'taichung veterans': '台中榮總', 'vghtc': '台中榮總',
+  'veterans': 'å°ä¸­æ¦®ç¸½', 'taichung veterans': 'å°ä¸­æ¦®ç¸½', 'vghtc': 'å°ä¸­æ¦®ç¸½',
 };
 
 List<_LocationResult> _filterPopular(String query) {
@@ -153,7 +132,7 @@ List<_LocationResult> _filterPopular(String query) {
       .toList();
 }
 
-Future<List<_LocationResult>> _nominatimSearch(String query) async {
+Future<List<_LocationResult>> _nominatimSearch(String query, LatLng origin) async {
   final q = query.trim();
   if (q.length < 2) return [];
 
@@ -167,9 +146,9 @@ Future<List<_LocationResult>> _nominatimSearch(String query) async {
     }
   }
 
-  // Try progressively: Chinese name in Taiwan → original query in Taiwan → original query
+  // Try progressively: Chinese name in Taiwan â†’ original query in Taiwan â†’ original query
   final queries = [
-    if (searchQuery != q) '$searchQuery 台中',
+    if (searchQuery != q) '$searchQuery å°ä¸­',
     '$searchQuery Taiwan',
     '$q Taiwan',
     q,
@@ -202,7 +181,16 @@ Future<List<_LocationResult>> _nominatimSearch(String query) async {
             const preferred = {'amenity', 'tourism', 'building', 'landuse'};
             final aScore = preferred.contains(a['class']) ? 0 : 1;
             final bScore = preferred.contains(b['class']) ? 0 : 1;
-            return aScore.compareTo(bScore);
+            if (aScore != bScore) return aScore.compareTo(bScore);
+            // Same class tier â€” prefer whichever branch is closer to the user,
+            // since chain results (e.g. a department store) return every
+            // branch nationwide and Nominatim's default order favours the
+            // most "important" one (often Taipei) over the nearest one.
+            final aDist = haversineDistance(origin.latitude, origin.longitude,
+                double.parse(a['lat'] as String), double.parse(a['lon'] as String));
+            final bDist = haversineDistance(origin.latitude, origin.longitude,
+                double.parse(b['lat'] as String), double.parse(b['lon'] as String));
+            return aDist.compareTo(bDist);
           });
         // Substitute curated coordinates when result matches a known popular location,
         // because Nominatim returns polygon centroids which can be off for large areas.
@@ -230,7 +218,7 @@ Future<List<_LocationResult>> _nominatimSearch(String query) async {
   return _filterPopular(q);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class MapScreen extends ConsumerStatefulWidget {
   const MapScreen({super.key});
@@ -264,14 +252,27 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   List<String> _busLines = [];
   String? _walkHint;
 
-  // ─── Sheet / route-detail state ───────────────────────────────────────────
+  // â”€â”€â”€ Sheet / route-detail state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   final _sheetController = DraggableScrollableController();
   final _busSearchController = TextEditingController();
   String _busSearchQuery = '';
   int _sheetTab = 0; // 0 = nearby, 1 = search
   bool _inRouteDetail = false;
-  int? _selectedDirection; // 0 = outbound 去程, 1 = inbound 回程
-  String? _userStopUID; // stop the user tapped from — highlighted in route detail
+  int? _selectedDirection; // 0 = outbound åŽ»ç¨‹, 1 = inbound å›žç¨‹
+  String? _userStopUID; // stop the user tapped from â€” highlighted in route detail
+
+  // Current fractional height (0..1) of the draggable sheet â€” used to keep
+  // GoogleMap's own bounds from extending underneath it. On Android, the
+  // GoogleMap platform view greedily wins the gesture arena for any touch
+  // that lands within its widget bounds (flutter/flutter#59433), so taps on
+  // sibling widgets stacked on top (like the sheet's tab bar) never reach
+  // Flutter at all unless the map's layout literally stops short of them.
+  double _sheetExtent = 0.10;
+
+  // Cached each build from languageProvider so event handlers (map taps,
+  // async direction fetches) that run outside the build phase can read the
+  // current language without calling ref.watch outside of build().
+  AppLanguage _lang = AppLanguage.zh;
 
   @override
   void initState() {
@@ -290,6 +291,12 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         });
       }
     });
+    _sheetController.addListener(_onSheetExtentChanged);
+  }
+
+  void _onSheetExtentChanged() {
+    if (!_sheetController.isAttached) return;
+    setState(() => _sheetExtent = _sheetController.size);
   }
 
   @override
@@ -299,6 +306,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     _searchController.dispose();
     _searchFocus.dispose();
     _busSearchController.dispose();
+    _sheetController.removeListener(_onSheetExtentChanged);
     _sheetController.dispose();
     super.dispose();
   }
@@ -349,7 +357,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     if (q.length < 2) return;
 
     _debounce = Timer(const Duration(milliseconds: 450), () async {
-      final results = await _nominatimSearch(q);
+      final results = await _nominatimSearch(q, _userLocation ?? _defaultCenter);
       if (mounted) {
         setState(() {
           _suggestions = results.isNotEmpty ? results : _filterPopular(q);
@@ -392,7 +400,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     _clearDirections();
   }
 
-  // ─── Route detail ─────────────────────────────────────────────────────────
+  // â”€â”€â”€ Route detail â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   void _toggleSheet() {
     const snaps = [0.10, 0.38, 0.72];
@@ -429,7 +437,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     });
   }
 
-  // ─── Directions API ───────────────────────────────────────────────────────
+  // â”€â”€â”€ Directions API â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   void _clearDirections() {
     setState(() {
@@ -444,7 +452,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     });
   }
 
-  // Shared helper — tries Google transit (bus) from [from] to [to].
+  // Shared helper â€” tries Google transit (bus) from [from] to [to].
   // Returns parsed result or null on failure/no route.
   Future<({String eta, String dist, List<LatLng> points, List<String> busLines})?> _tryTransit(
     LatLng from, LatLng to) async {
@@ -469,9 +477,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           as Map<String, dynamic>;
       final eta = (leg['duration'] as Map)['text'] as String;
       final dist = (leg['distance'] as Map)['text'] as String;
-      final encoded =
-          ((routes[0] as Map)['overview_polyline'] as Map)['points'] as String;
-      final points = _decodePolyline(encoded);
+      final points = _extractDetailedPolyline(leg);
       // Extract bus line numbers
       final busLines = <String>[];
       for (final step in leg['steps'] as List<dynamic>) {
@@ -516,9 +522,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           as Map<String, dynamic>;
       final eta = (leg['duration'] as Map)['text'] as String;
       final dist = (leg['distance'] as Map)['text'] as String;
-      final encoded =
-          ((routes[0] as Map)['overview_polyline'] as Map)['points'] as String;
-      return (eta: eta, dist: dist, points: _decodePolyline(encoded));
+      return (eta: eta, dist: dist, points: _extractDetailedPolyline(leg));
     } catch (_) {
       return null;
     }
@@ -535,7 +539,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final dest = LatLng(destination.lat, destination.lon);
     final origin = _userLocation ?? _defaultCenter;
 
-    // ── Step 1: direct transit to destination ────────────────────────────────
+    // â”€â”€ Step 1: direct transit to destination â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     final direct = await _tryTransit(origin, dest);
     if (direct != null && mounted) {
       setState(() {
@@ -554,7 +558,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       return;
     }
 
-    // ── Step 2: no direct bus — find stops near destination, walk the last bit
+    // â”€â”€ Step 2: no direct bus â€” find stops near destination, walk the last bit
     try {
       final nearbyAtDest = await PtxApi.instance.getNearbyStops(
         destination.lat, destination.lon, defaultCity, radius: 800,
@@ -580,7 +584,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         final distLabel = walkDist < 1000
             ? '${walkDist.toStringAsFixed(0)} m'
             : '${(walkDist / 1000).toStringAsFixed(1)} km';
-        final hint = 'Walk ${walkMins}min ($distLabel) to ${destination.shortName}';
+        final hint = AppStrings.walkHintLabel(
+            _lang, walkMins, distLabel, destination.shortName);
 
         if (mounted) {
           setState(() {
@@ -601,7 +606,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       }
     } catch (_) {}
 
-    // ── Step 3: close enough to walk? (≤ 1.5 km straight-line) ─────────────
+    // â”€â”€ Step 3: close enough to walk? (â‰¤ 1.5 km straight-line) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     final straightLine = haversineDistance(
         origin.latitude, origin.longitude, dest.latitude, dest.longitude);
     if (straightLine <= 1500 && mounted) {
@@ -610,7 +615,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           ? '${straightLine.toStringAsFixed(0)} m'
           : '${(straightLine / 1000).toStringAsFixed(1)} km';
       setState(() {
-        _directionsEta = '~${walkMins} min';
+        _directionsEta = AppStrings.approxMinsLabel(_lang, walkMins);
         _directionsDistance = distLabel;
         _directionsPolyline = [];
         _fetchingDirections = false;
@@ -623,7 +628,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       return;
     }
 
-    // ── Step 4: fall back to driving directions ──────────────────────────────
+    // â”€â”€ Step 4: fall back to driving directions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     final car = await _tryDriving(origin, dest);
     if (car != null && mounted) {
       setState(() {
@@ -642,7 +647,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       return;
     }
 
-    // ── No route found at all ────────────────────────────────────────────────
+    // â”€â”€ No route found at all â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if (mounted) {
       setState(() {
         _fetchingDirections = false;
@@ -654,6 +659,27 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         _walkHint = null;
       });
     }
+  }
+
+  // Concatenates each step's own polyline instead of using overview_polyline,
+  // which Google deliberately simplifies for small-scale display and cuts
+  // corners at turns. Per-step polylines follow the actual road geometry.
+  List<LatLng> _extractDetailedPolyline(Map<String, dynamic> leg) {
+    final points = <LatLng>[];
+    for (final step in leg['steps'] as List<dynamic>) {
+      final s = step as Map<String, dynamic>;
+      final encoded = (s['polyline'] as Map<String, dynamic>?)?['points'] as String?;
+      if (encoded == null) continue;
+      final stepPoints = _decodePolyline(encoded);
+      if (points.isNotEmpty &&
+          stepPoints.isNotEmpty &&
+          points.last == stepPoints.first) {
+        points.addAll(stepPoints.skip(1));
+      } else {
+        points.addAll(stepPoints);
+      }
+    }
+    return points;
   }
 
   List<LatLng> _decodePolyline(String encoded) {
@@ -694,16 +720,15 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     );
   }
 
-  // ─── Build Google Maps marker set ─────────────────────────────────────────
+  // â”€â”€â”€ Build Google Maps marker set â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   Set<Marker> _buildMarkers(
     List<BusRealTime> buses,
-    List<NearbyStop> nearby,
     List<RouteStop> routeStops,
   ) {
     final markers = <Marker>{};
 
-    // Live bus position markers — filtered by direction when in route detail
+    // Live bus position markers â€” filtered by direction when in route detail
     for (final bus in buses) {
       if (_selectedDirection != null && bus.direction != _selectedDirection) continue;
       markers.add(Marker(
@@ -711,14 +736,15 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         position: LatLng(bus.busPosition.lat, bus.busPosition.lon),
         icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
         infoWindow: InfoWindow(
-          title: 'Route ${_selectedRoute ?? ''}',
-          snippet: '${bus.plateNumb}  ${bus.direction == 0 ? 'Outbound' : 'Inbound'}',
+          title: AppStrings.route(_lang, _selectedRoute ?? ''),
+          snippet:
+              '${bus.plateNumb}  ${bus.direction == 0 ? AppStrings.t(_lang, 'outbound') : AppStrings.t(_lang, 'inbound')}',
         ),
         zIndexInt: 2,
       ));
     }
 
-    // Route stop markers — show only selected direction, hidden while destination active
+    // Route stop markers â€” show only selected direction, hidden while destination active
     if (_selectedDestination == null && _selectedDirection != null) {
       for (final stop in routeStops) {
         if (stop.direction != _selectedDirection) continue;
@@ -727,8 +753,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           position: LatLng(stop.stopPosition.lat, stop.stopPosition.lon),
           icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
           infoWindow: InfoWindow(
-            title: stop.stopName.zhTw,
-            snippet: 'Route ${_selectedRoute ?? ''}  •  Stop ${stop.stopSequence}',
+            title: stop.stopName.forLang(_lang),
+            snippet:
+                '${AppStrings.route(_lang, _selectedRoute ?? '')}  â€¢  ${AppStrings.stopFallbackLabel(_lang, stop.stopSequence)}',
           ),
           onTap: () => _showStopOptions(stop),
           alpha: 0.85,
@@ -748,36 +775,15 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       ));
     }
 
-    // Nearby stop markers — only shown after a route is selected and no destination is active
-    if (_selectedDestination == null && _selectedRoute != null) {
-      for (int i = 0; i < nearby.length; i++) {
-        final ns = nearby[i];
-        markers.add(Marker(
-          markerId: MarkerId('nearby_${ns.stop.stopUID}'),
-          position: LatLng(ns.stop.stopPosition.lat, ns.stop.stopPosition.lon),
-          icon: BitmapDescriptor.defaultMarkerWithHue(_stopHues[i % _stopHues.length]),
-          infoWindow: InfoWindow(
-            title: ns.stop.stopName.zhTw,
-            snippet: '${ns.distance.toStringAsFixed(0)} m away',
-          ),
-          onTap: () => Navigator.pushNamed(context, '/stop_detail', arguments: {
-            'stopUID': ns.stop.stopUID,
-            'stopName': ns.stop.stopName.zhTw,
-          }),
-          zIndexInt: 3,
-        ));
-      }
-    }
-
     return markers;
   }
 
-  // ─── Build route polylines from TDX stop positions ────────────────────────
+  // â”€â”€â”€ Build route polylines from TDX stop positions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   Set<Polyline> _buildPolylines(List<RouteStop> stops) {
     final polylines = <Polyline>{};
 
-    // TDX bus route polyline — only the selected direction when in route detail
+    // TDX bus route polyline â€” only the selected direction when in route detail
     if (stops.isNotEmpty && _selectedDirection != null) {
       final dirStops = stops
           .where((s) => s.direction == _selectedDirection)
@@ -799,7 +805,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       }
     }
 
-    // Directions route — colour depends on transport mode
+    // Directions route â€” colour depends on transport mode
     if (_directionsPolyline.isNotEmpty) {
       final routeColor = _transportMode == 'car'
           ? AppColors.yellow
@@ -823,6 +829,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   @override
   Widget build(BuildContext context) {
     final favourites = ref.watch(favouritesProvider);
+    _lang = ref.watch(languageProvider);
 
     final List<BusRealTime> buses;
     final List<RouteStop> routeStops;
@@ -858,7 +865,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       if (sortedNearby.length > 6) sortedNearby = sortedNearby.sublist(0, 6);
     }
 
-    // Aggregate live arrivals for nearby stops (up to 4 stops — covers both sides
+    // Aggregate live arrivals for nearby stops (up to 4 stops â€” covers both sides
     // of the road so inbound and outbound buses both appear).
     // Paused while route detail is open to avoid competing with route position polls.
     final List<EstimatedArrival> nearbyArrivals;
@@ -887,42 +894,51 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       nearbyStillLoading = false;
     }
 
-    final markers = _buildMarkers(buses, sortedNearby, routeStops);
+    final markers = _buildMarkers(buses, routeStops);
     final polylines = _buildPolylines(routeStops);
 
     return Scaffold(
       backgroundColor: AppColors.bg,
       body: Stack(
         children: [
-          // ── Google Maps ──────────────────────────────────────────────────
-          GoogleMap(
-            initialCameraPosition: CameraPosition(
-              target: _userLocation ?? _defaultCenter,
-              zoom: 14,
+          // â”€â”€ Google Maps â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+          // Bottom is pinned above the sheet's current top edge (rather than
+          // filling the whole Stack) so the map's platform view never
+          // underlaps the sheet â€” see _sheetExtent doc comment above.
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: _sheetExtent * MediaQuery.sizeOf(context).height,
+            child: GoogleMap(
+              initialCameraPosition: CameraPosition(
+                target: _userLocation ?? _defaultCenter,
+                zoom: 14,
+              ),
+              style: darkMapStyle,
+              onMapCreated: (controller) {
+                _mapController = controller;
+                if (_userLocation != null) {
+                  controller.animateCamera(
+                    CameraUpdate.newLatLngZoom(_userLocation!, 14),
+                  );
+                }
+              },
+              myLocationEnabled: _locationGranted,
+              myLocationButtonEnabled: false,
+              zoomControlsEnabled: false,
+              mapToolbarEnabled: false,
+              compassEnabled: false,
+              markers: markers,
+              polylines: polylines,
+              onTap: (_) {
+                _searchFocus.unfocus();
+                setState(() => _showSuggestions = false);
+              },
             ),
-            style: darkMapStyle,
-            onMapCreated: (controller) {
-              _mapController = controller;
-              if (_userLocation != null) {
-                controller.animateCamera(
-                  CameraUpdate.newLatLngZoom(_userLocation!, 14),
-                );
-              }
-            },
-            myLocationEnabled: _locationGranted,
-            myLocationButtonEnabled: false,
-            zoomControlsEnabled: false,
-            mapToolbarEnabled: false,
-            compassEnabled: false,
-            markers: markers,
-            polylines: polylines,
-            onTap: (_) {
-              _searchFocus.unfocus();
-              setState(() => _showSuggestions = false);
-            },
           ),
 
-          // ── Search bar + dropdown ────────────────────────────────────────
+          // â”€â”€ Search bar + dropdown â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
           Positioned(
             top: MediaQuery.of(context).padding.top + 8,
             left: 12,
@@ -952,7 +968,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     style: const TextStyle(
                         color: AppColors.textPrimary, fontSize: 14),
                     decoration: InputDecoration(
-                      hintText: 'Search location…',
+                      hintText: AppStrings.t(_lang, 'searchLocationHint'),
                       hintStyle: const TextStyle(
                           color: AppColors.textMuted, fontSize: 13),
                       prefixIcon: _loadingSuggestions
@@ -981,7 +997,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     onSubmitted: (v) {
                       _debounce?.cancel();
                       setState(() => _loadingSuggestions = true);
-                      _nominatimSearch(v).then((results) {
+                      _nominatimSearch(v, _userLocation ?? _defaultCenter).then((results) {
                         if (mounted) {
                           setState(() {
                             _suggestions = results.isNotEmpty
@@ -1016,7 +1032,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   ),
                 ],
 
-                // ── ETA card (shown after a destination is selected) ────────
+                // â”€â”€ ETA card (shown after a destination is selected) â”€â”€â”€â”€â”€â”€â”€â”€
                 if (_selectedDestination != null && !_showSuggestions) ...[
                   const SizedBox(height: 4),
                   Container(
@@ -1042,21 +1058,21 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                       ],
                     ),
                     child: _fetchingDirections
-                        ? const Row(children: [
-                            SizedBox(
+                        ? Row(children: [
+                            const SizedBox(
                               width: 14,
                               height: 14,
                               child: CircularProgressIndicator(
                                   strokeWidth: 2, color: AppColors.green),
                             ),
-                            SizedBox(width: 10),
-                            Text('Finding routes…',
-                                style: TextStyle(
+                            const SizedBox(width: 10),
+                            Text(AppStrings.t(_lang, 'findingRoutes'),
+                                style: const TextStyle(
                                     color: AppColors.textMuted,
                                     fontSize: 13)),
                           ])
                         : _transportMode == null
-                            // ── No route found ───────────────────────────
+                            // â”€â”€ No route found â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
                             ? Row(children: [
                                 const Icon(Icons.not_interested_rounded,
                                     color: AppColors.textMuted, size: 16),
@@ -1075,8 +1091,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                       ),
-                                      const Text('No routes found',
-                                          style: TextStyle(
+                                      Text(
+                                          AppStrings.t(
+                                              _lang, 'noRoutesFound'),
+                                          style: const TextStyle(
                                               color: AppColors.textMuted,
                                               fontSize: 12)),
                                     ],
@@ -1088,7 +1106,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                                       color: AppColors.textMuted, size: 18),
                                 ),
                               ])
-                            // ── Route found ──────────────────────────────
+                            // â”€â”€ Route found â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
                             : Row(children: [
                                 Icon(
                                   _transportMode == 'car'
@@ -1173,8 +1191,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                                             ),
                                             child: Text(
                                               _transportMode == 'car'
-                                                  ? 'Drive'
-                                                  : 'Walk',
+                                                  ? AppStrings.t(
+                                                      _lang, 'drive')
+                                                  : AppStrings.t(
+                                                      _lang, 'walk'),
                                               style: TextStyle(
                                                   color: _transportMode == 'car'
                                                       ? AppColors.yellow
@@ -1188,7 +1208,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                                       // ETA + distance
                                       if (_directionsEta != null)
                                         Text(
-                                          '$_directionsEta · $_directionsDistance',
+                                          '$_directionsEta Â· $_directionsDistance',
                                           style: TextStyle(
                                               color: _transportMode == 'car'
                                                   ? AppColors.yellow
@@ -1233,7 +1253,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             ),
           ),
 
-          // ── Right-side buttons ───────────────────────────────────────────
+          // â”€â”€ Right-side buttons â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
           Positioned(
             top: MediaQuery.of(context).padding.top + 8,
             right: 12,
@@ -1251,10 +1271,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   },
                 ),
                 const SizedBox(height: 8),
-                _MapBtn(
-                  icon: Icons.directions_bus_rounded,
-                  color: AppColors.textSecondary,
-                  onTap: () => Navigator.pushNamed(context, '/search'),
+                _LangBtn(
+                  lang: _lang,
+                  onTap: () =>
+                      ref.read(languageProvider.notifier).toggle(),
                 ),
                 const SizedBox(height: 8),
                 _MapBtn(
@@ -1266,7 +1286,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             ),
           ),
 
-          // ── Back button (visible only in route detail) ──────────────
+          // â”€â”€ Back button (visible only in route detail) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
           if (_inRouteDetail)
             Positioned(
               bottom: MediaQuery.of(context).padding.bottom + 90,
@@ -1292,7 +1312,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                         color: AppColors.textPrimary, size: 16),
                     const SizedBox(width: 6),
                     Text(
-                      'Route ${_selectedRoute ?? ''}  ${_selectedDirection == 0 ? 'Outbound' : 'Inbound'}',
+                      '${AppStrings.route(_lang, _selectedRoute ?? '')}  ${_selectedDirection == 0 ? AppStrings.t(_lang, 'outbound') : AppStrings.t(_lang, 'inbound')}',
                       style: const TextStyle(
                           color: AppColors.textPrimary,
                           fontSize: 13,
@@ -1317,7 +1337,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               ),
             ),
 
-          // ── Draggable bottom sheet ───────────────────────────────────────
+          // â”€â”€ Draggable bottom sheet â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
           DraggableScrollableSheet(
             controller: _sheetController,
             initialChildSize: 0.10,
@@ -1346,7 +1366,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     );
   }
 
-  // ─── Stop options modal ───────────────────────────────────────────────────
+  // â”€â”€â”€ Stop options modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   void _showStopOptions(RouteStop stop) {
     showModalBottomSheet(
@@ -1372,7 +1392,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               decoration: BoxDecoration(
                   color: AppColors.blue.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(6)),
-              child: Text('Route ${_selectedRoute ?? ''}',
+              child: Text(AppStrings.route(_lang, _selectedRoute ?? ''),
                   style: const TextStyle(
                       color: AppColors.blue,
                       fontSize: 11,
@@ -1380,7 +1400,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             ),
             const SizedBox(width: 10),
             Expanded(
-              child: Text(stop.stopName.zhTw,
+              child: Text(stop.stopName.forLang(_lang),
                   style: const TextStyle(
                       color: AppColors.textPrimary,
                       fontSize: 16,
@@ -1388,7 +1408,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             ),
           ]),
           const SizedBox(height: 4),
-          Text('Stop ${stop.stopSequence}  •  ${_selectedDirection == 0 ? 'Outbound' : 'Inbound'}',
+          Text(
+              '${AppStrings.stopFallbackLabel(_lang, stop.stopSequence)}  â€¢  ${_selectedDirection == 0 ? AppStrings.t(_lang, 'outbound') : AppStrings.t(_lang, 'inbound')}',
               style: const TextStyle(
                   color: AppColors.textMuted, fontSize: 12)),
           const SizedBox(height: 16),
@@ -1403,14 +1424,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     borderRadius: BorderRadius.circular(12)),
               ),
               icon: const Icon(Icons.directions_rounded, size: 18),
-              label: const Text('Get directions to this stop'),
+              label: Text(AppStrings.t(_lang, 'getDirectionsToStop')),
               onPressed: stop.stopPosition.lat == 0 && stop.stopPosition.lon == 0
                   ? null // disable when position unknown
                   : () {
                       Navigator.pop(context);
                       final dest = _LocationResult(
-                        shortName: stop.stopName.zhTw,
-                        displayName: stop.stopName.zhTw,
+                        shortName: stop.stopName.forLang(_lang),
+                        displayName: stop.stopName.forLang(_lang),
                         lat: stop.stopPosition.lat,
                         lon: stop.stopPosition.lon,
                       );
@@ -1419,12 +1440,13 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             ),
           ),
           if (stop.stopPosition.lat == 0 && stop.stopPosition.lon == 0)
-            const Padding(
-              padding: EdgeInsets.only(top: 6),
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
               child: Text(
-                'Stop location data unavailable',
+                AppStrings.t(_lang, 'stopLocationUnavailable'),
                 textAlign: TextAlign.center,
-                style: TextStyle(color: AppColors.textMuted, fontSize: 12),
+                style:
+                    const TextStyle(color: AppColors.textMuted, fontSize: 12),
               ),
             ),
         ]),
@@ -1432,7 +1454,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     );
   }
 
-  // ─── Sheet content builders ───────────────────────────────────────────────
+  // â”€â”€â”€ Sheet content builders â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   Widget _buildTabSheet(
     ScrollController sc,
@@ -1446,7 +1468,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       padding: EdgeInsets.fromLTRB(
           12, 0, 12, 12 + MediaQuery.of(context).padding.bottom),
       children: [
-        // Drag handle — drag or tap to cycle through snap positions
+        // Drag handle â€” drag or tap to cycle through snap positions
         GestureDetector(
           onTap: _toggleSheet,
           behavior: HitTestBehavior.opaque,
@@ -1470,9 +1492,13 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           ),
           padding: const EdgeInsets.all(3),
           child: Row(children: [
-            _SheetTab(label: 'Nearby', active: _sheetTab == 0,
+            _SheetTab(
+                label: AppStrings.t(_lang, 'nearbyTab'),
+                active: _sheetTab == 0,
                 onTap: () => setState(() => _sheetTab = 0)),
-            _SheetTab(label: 'Routes', active: _sheetTab == 1,
+            _SheetTab(
+                label: AppStrings.t(_lang, 'routesTab'),
+                active: _sheetTab == 1,
                 onTap: () => setState(() => _sheetTab = 1)),
           ]),
         ),
@@ -1499,7 +1525,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         : const AsyncValue<List<EstimatedArrival>>.data([]);
     final arrivals = arrivalsAsync.value ?? [];
 
-    // Build stopUID → best ETA for selected direction
+    // Build stopUID â†’ best ETA for selected direction
     final etaMap = <String, ({int seconds, int stopStatus})>{};
     for (final a in arrivals) {
       if (a.direction == _selectedDirection) {
@@ -1516,8 +1542,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final inStops = routeStops.where((s) => s.direction == 1).toList()
       ..sort((a, b) => a.stopSequence.compareTo(b.stopSequence));
 
-    final outEnd = outStops.isNotEmpty ? outStops.last.stopName.zhTw : '';
-    final inEnd = inStops.isNotEmpty ? inStops.last.stopName.zhTw : '';
+    final outEnd =
+        outStops.isNotEmpty ? outStops.last.stopName.forLang(_lang) : '';
+    final inEnd =
+        inStops.isNotEmpty ? inStops.last.stopName.forLang(_lang) : '';
 
     final dirStops = (_selectedDirection == 0 ? outStops : inStops);
     final isLoading = routeStops.isEmpty;
@@ -1543,7 +1571,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           ),
         ),
 
-        // Direction tabs — show when stops are loaded
+        // Direction tabs â€” show when stops are loaded
         if (!isLoading && (outEnd.isNotEmpty || inEnd.isNotEmpty)) ...[
           Container(
             decoration: BoxDecoration(
@@ -1553,12 +1581,16 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             padding: const EdgeInsets.all(3),
             child: Row(children: [
               _SheetTab(
-                label: outEnd.isNotEmpty ? 'To $outEnd' : 'Outbound',
+                label: outEnd.isNotEmpty
+                    ? AppStrings.toDestination(_lang, outEnd)
+                    : AppStrings.t(_lang, 'outbound'),
                 active: _selectedDirection == 0,
                 onTap: () => setState(() => _selectedDirection = 0),
               ),
               _SheetTab(
-                label: inEnd.isNotEmpty ? 'To $inEnd' : 'Inbound',
+                label: inEnd.isNotEmpty
+                    ? AppStrings.toDestination(_lang, inEnd)
+                    : AppStrings.t(_lang, 'inbound'),
                 active: _selectedDirection == 1,
                 onTap: () => setState(() => _selectedDirection = 1),
               ),
@@ -1586,24 +1618,24 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             final etaSec = etaData?.seconds;
             final stopSt = etaData?.stopStatus ?? -1;
 
-            // ETA label + colour — mirrors the reference Taichung app style
+            // ETA label + colour â€” mirrors the reference Taichung app style
             String? etaLabel;
             Color etaColor = AppColors.textMuted;
             bool isApproach = false;
             if (stopSt == 0 && etaSec != null && etaSec >= 0) {
               if (etaSec <= 60) {
-                etaLabel = 'Approach';
+                etaLabel = AppStrings.t(_lang, 'approach');
                 etaColor = AppColors.red;
                 isApproach = true;
               } else {
                 final mins = (etaSec / 60).ceil();
-                etaLabel = mins == 1 ? '1 min' : '$mins min';
+                etaLabel = AppStrings.minsLabel(_lang, mins);
                 etaColor = mins <= 2
                     ? AppColors.yellow
                     : AppColors.textMuted;
               }
             } else if (stopSt > 0) {
-              etaLabel = 'Serv Over';
+              etaLabel = AppStrings.t(_lang, 'servOver');
             }
 
             // Live bus within 300 m of this stop
@@ -1614,11 +1646,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                             stop.stopPosition.lat, stop.stopPosition.lon) <
                         300);
 
-            final stopLabel = stop.stopName.zhTw.isNotEmpty
-                ? stop.stopName.zhTw
-                : stop.stopName.en.isNotEmpty
-                    ? stop.stopName.en
-                    : 'Stop ${stop.stopSequence}';
+            final stopLabelValue = stop.stopName.forLang(_lang);
+            final stopLabel = stopLabelValue.isNotEmpty
+                ? stopLabelValue
+                : AppStrings.stopFallbackLabel(_lang, stop.stopSequence);
 
             // Border colour priority: user's stop > bus nearby > default
             final borderColor = isUserStop
@@ -1719,24 +1750,24 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       List<NearbyStop> sortedNearby,
       bool loading) {
     if (_userLocation == null) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 24),
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 24),
         child: Center(
-            child: Text('Getting location…',
-                style:
-                    TextStyle(color: AppColors.textMuted, fontSize: 13))),
+            child: Text(AppStrings.t(_lang, 'gettingLocation'),
+                style: const TextStyle(
+                    color: AppColors.textMuted, fontSize: 13))),
       );
     }
     if (sortedNearby.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 24),
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 24),
         child: Center(
-            child: Text('No nearby bus stops',
-                style:
-                    TextStyle(color: AppColors.textMuted, fontSize: 13))),
+            child: Text(AppStrings.t(_lang, 'noNearbyStops'),
+                style: const TextStyle(
+                    color: AppColors.textMuted, fontSize: 13))),
       );
     }
-    // First load — show spinner instead of "no buses"
+    // First load â€” show spinner instead of "no buses"
     if (loading && arrivals.isEmpty) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 24),
@@ -1758,19 +1789,19 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 padding: const EdgeInsets.symmetric(
                     horizontal: 12, vertical: 8),
                 decoration: BoxDecoration(
-                  color: AppColors.yellow.withOpacity(0.1),
+                  color: AppColors.yellow.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
-                      color: AppColors.yellow.withOpacity(0.3)),
+                      color: AppColors.yellow.withValues(alpha: 0.3)),
                 ),
                 child: Row(children: [
                   const Icon(Icons.schedule_rounded,
                       color: AppColors.yellow, size: 14),
                   const SizedBox(width: 8),
-                  const Expanded(
+                  Expanded(
                     child: Text(
-                      'Bus service inactive (06:00–23:00)',
-                      style: TextStyle(
+                      AppStrings.t(_lang, 'busServiceInactiveShort'),
+                      style: const TextStyle(
                           color: AppColors.yellow, fontSize: 12),
                     ),
                   ),
@@ -1780,8 +1811,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               const Icon(Icons.directions_bus_outlined,
                   color: AppColors.textMuted, size: 28),
               const SizedBox(height: 8),
-              const Text('No buses arriving soon',
-                  style: TextStyle(
+              Text(AppStrings.t(_lang, 'noBusesArrivingSoon'),
+                  style: const TextStyle(
                       color: AppColors.textMuted, fontSize: 13)),
             ],
           ],
@@ -1791,8 +1822,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('ARRIVING SOON',
-            style: TextStyle(
+        Text(AppStrings.t(_lang, 'arrivingSoonHeader'),
+            style: const TextStyle(
                 color: AppColors.textMuted,
                 fontSize: 11,
                 letterSpacing: 1.2)),
@@ -1805,10 +1836,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   Widget _buildArrivalCard(EstimatedArrival arrival) {
     final mins = (arrival.estimateTime / 60).ceil();
     final etaLabel = mins <= 0
-        ? 'Arriving'
-        : mins == 1
-            ? '1 min'
-            : '$mins min';
+        ? AppStrings.t(_lang, 'arriving')
+        : AppStrings.minsLabel(_lang, mins);
     final etaColor =
         mins <= 1 ? AppColors.green : mins <= 5 ? AppColors.yellow : AppColors.textMuted;
 
@@ -1833,7 +1862,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             decoration: BoxDecoration(
                 color: AppColors.blue.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(6)),
-            child: Text(arrival.routeName.zhTw,
+            child: Text(arrival.routeName.forLang(_lang),
                 style: const TextStyle(
                     color: AppColors.blue,
                     fontSize: 13,
@@ -1844,12 +1873,15 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(arrival.stopName.zhTw,
+                Text(arrival.stopName.forLang(_lang),
                     style: const TextStyle(
                         color: AppColors.textPrimary, fontSize: 13),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis),
-                Text(arrival.direction == 0 ? 'Outbound' : 'Inbound',
+                Text(
+                    arrival.direction == 0
+                        ? AppStrings.t(_lang, 'outbound')
+                        : AppStrings.t(_lang, 'inbound'),
                     style: const TextStyle(
                         color: AppColors.textMuted, fontSize: 11)),
               ],
@@ -1883,15 +1915,15 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             controller: _busSearchController,
             style: const TextStyle(
                 color: AppColors.textPrimary, fontSize: 14),
-            decoration: const InputDecoration(
-              hintText: 'Enter route number (e.g. 52)',
-              hintStyle:
-                  TextStyle(color: AppColors.textMuted, fontSize: 13),
-              prefixIcon: Icon(Icons.search_rounded,
+            decoration: InputDecoration(
+              hintText: AppStrings.t(_lang, 'enterRouteNumberHint'),
+              hintStyle: const TextStyle(
+                  color: AppColors.textMuted, fontSize: 13),
+              prefixIcon: const Icon(Icons.search_rounded,
                   color: AppColors.blue, size: 20),
               border: InputBorder.none,
               contentPadding:
-                  EdgeInsets.symmetric(horizontal: 4, vertical: 13),
+                  const EdgeInsets.symmetric(horizontal: 4, vertical: 13),
             ),
             onChanged: (v) =>
                 setState(() => _busSearchQuery = v.trim()),
@@ -1911,20 +1943,21 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     child: CircularProgressIndicator(
                         color: AppColors.blue, strokeWidth: 2)),
               ),
-              error: (_, __) => const Text('Search failed, try again',
-                  style: TextStyle(
+              error: (_, __) => Text(
+                  AppStrings.t(_lang, 'searchFailedTryAgain'),
+                  style: const TextStyle(
                       color: AppColors.textMuted, fontSize: 13)),
               data: (routes) {
                 if (routes.isEmpty) {
-                  return const Text('Route not found',
-                      style: TextStyle(
+                  return Text(AppStrings.t(_lang, 'routeNotFound'),
+                      style: const TextStyle(
                           color: AppColors.textMuted, fontSize: 13));
                 }
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('RESULTS',
-                        style: TextStyle(
+                    Text(AppStrings.t(_lang, 'resultsHeader'),
+                        style: const TextStyle(
                             color: AppColors.textMuted,
                             fontSize: 11,
                             letterSpacing: 1.2)),
@@ -1939,9 +1972,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             );
           })
         else
-          const Text('Search Taichung bus routes',
-              style:
-                  TextStyle(color: AppColors.textMuted, fontSize: 13)),
+          Text(AppStrings.t(_lang, 'searchTaichungRoutes'),
+              style: const TextStyle(
+                  color: AppColors.textMuted, fontSize: 13)),
       ],
     );
   }
@@ -1954,7 +1987,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final to = direction == 0
         ? route.destinationStopNameZh
         : route.departureStopNameZh;
-    final dirLabel = direction == 0 ? 'Outbound' : 'Inbound';
+    final dirLabel = direction == 0
+        ? AppStrings.t(_lang, 'outbound')
+        : AppStrings.t(_lang, 'inbound');
     final isFav = favourites.contains(route.routeName.zhTw);
 
     return GestureDetector(
@@ -1975,7 +2010,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             decoration: BoxDecoration(
                 color: AppColors.blue.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(8)),
-            child: Text(route.routeName.zhTw,
+            child: Text(route.routeName.forLang(_lang),
                 style: const TextStyle(
                     color: AppColors.blue,
                     fontSize: 15,
@@ -2040,32 +2075,32 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
   Widget _buildSuggestionsList() {
     if (_loadingSuggestions && _suggestions.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.all(16),
+      return Padding(
+        padding: const EdgeInsets.all(16),
         child: Row(children: [
-          SizedBox(
+          const SizedBox(
               width: 14,
               height: 14,
               child: CircularProgressIndicator(
                   strokeWidth: 2, color: AppColors.blue)),
-          SizedBox(width: 10),
-          Text('Searching…',
-              style:
-                  TextStyle(color: AppColors.textMuted, fontSize: 13)),
+          const SizedBox(width: 10),
+          Text(AppStrings.t(_lang, 'searching'),
+              style: const TextStyle(
+                  color: AppColors.textMuted, fontSize: 13)),
         ]),
       );
     }
 
     if (_suggestions.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.all(16),
+      return Padding(
+        padding: const EdgeInsets.all(16),
         child: Row(children: [
-          Icon(Icons.location_off_outlined,
+          const Icon(Icons.location_off_outlined,
               color: AppColors.textMuted, size: 16),
-          SizedBox(width: 8),
-          Text('No locations found',
-              style:
-                  TextStyle(color: AppColors.textMuted, fontSize: 13)),
+          const SizedBox(width: 8),
+          Text(AppStrings.t(_lang, 'noLocationsFound'),
+              style: const TextStyle(
+                  color: AppColors.textMuted, fontSize: 13)),
         ]),
       );
     }
@@ -2076,6 +2111,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         return _SuggestionTile(
           result: e.value,
           isLast: isLast,
+          lang: _lang,
           onTap: () => _selectSuggestion(e.value),
         );
       }).toList(),
@@ -2083,17 +2119,27 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   }
 }
 
-// ─── Widgets ──────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Widgets â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class _SuggestionTile extends StatelessWidget {
   final _LocationResult result;
   final bool isLast;
+  final AppLanguage lang;
   final VoidCallback onTap;
   const _SuggestionTile(
-      {required this.result, required this.isLast, required this.onTap});
+      {required this.result,
+      required this.isLast,
+      required this.lang,
+      required this.onTap});
 
   @override
   Widget build(BuildContext context) {
+    // In English mode, show the English name first (when available) and the
+    // Chinese name as the secondary line — reversed from the zh default.
+    final showEnFirst = lang == AppLanguage.en && result.shortNameEn.isNotEmpty;
+    final primaryName = showEnFirst ? result.shortNameEn : result.shortName;
+    final secondaryName = showEnFirst ? result.shortName : result.shortNameEn;
+
     return InkWell(
       onTap: onTap,
       borderRadius: isLast
@@ -2119,16 +2165,16 @@ class _SuggestionTile extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // Show both Chinese and English when both are available
-                  Text(result.shortName,
+                  Text(primaryName,
                       style: const TextStyle(
                           color: AppColors.textPrimary,
                           fontSize: 13,
                           fontWeight: FontWeight.w500),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis),
-                  if (result.shortNameEn.isNotEmpty) ...[
+                  if (secondaryName.isNotEmpty) ...[
                     const SizedBox(height: 1),
-                    Text(result.shortNameEn,
+                    Text(secondaryName,
                         style: const TextStyle(
                             color: AppColors.textSecondary, fontSize: 11),
                         maxLines: 1,
@@ -2172,6 +2218,37 @@ class _MapBtn extends StatelessWidget {
           border: Border.all(color: AppColors.border),
         ),
         child: Icon(icon, color: color, size: 18),
+      ),
+    );
+  }
+}
+
+class _LangBtn extends StatelessWidget {
+  final AppLanguage lang;
+  final VoidCallback onTap;
+  const _LangBtn({required this.lang, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          color: const Color(0xCC1F2330),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: AppColors.border),
+        ),
+        alignment: Alignment.center,
+        child: Text(
+          lang == AppLanguage.zh ? '中' : 'EN',
+          style: const TextStyle(
+            color: AppColors.textSecondary,
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
       ),
     );
   }

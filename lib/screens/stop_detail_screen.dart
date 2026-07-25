@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/bus_models.dart';
 import '../providers/bus_providers.dart';
+import '../utils/app_strings.dart';
 import '../utils/theme.dart';
 import '../widgets/bus_badge.dart';
 import '../widgets/eta_tag.dart';
@@ -24,6 +25,7 @@ class StopDetailScreen extends ConsumerWidget {
     final arrivalsAsync = ref.watch(
       stopArrivalsProvider((stopUID: stopUID, city: defaultCity)),
     );
+    final lang = ref.watch(languageProvider);
 
     return Scaffold(
       backgroundColor: AppColors.bg,
@@ -66,9 +68,9 @@ class StopDetailScreen extends ConsumerWidget {
                               ),
                             ),
                             const SizedBox(width: 5),
-                            const Text(
-                              'Updates every 20s',
-                              style: TextStyle(
+                            Text(
+                              AppStrings.t(lang, 'updatesEvery30s'),
+                              style: const TextStyle(
                                   color: AppColors.textMuted,
                                   fontSize: 11),
                             ),
@@ -81,11 +83,11 @@ class StopDetailScreen extends ConsumerWidget {
               ),
             ),
 
-            const Padding(
-              padding: EdgeInsets.fromLTRB(16, 4, 16, 8),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
               child: Text(
-                'ARRIVING SOON',
-                style: TextStyle(
+                AppStrings.t(lang, 'arrivingSoonHeader'),
+                style: const TextStyle(
                     color: AppColors.textMuted,
                     fontSize: 11,
                     letterSpacing: 1.2),
@@ -95,14 +97,14 @@ class StopDetailScreen extends ConsumerWidget {
             // ── Arrivals list ─────────────────────────────────────────────
             Expanded(
               child: arrivalsAsync.when(
-                loading: () => const Center(
+                loading: () => Center(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      CircularProgressIndicator(color: AppColors.blue),
-                      SizedBox(height: 12),
-                      Text('Loading…',
-                          style: TextStyle(
+                      const CircularProgressIndicator(color: AppColors.blue),
+                      const SizedBox(height: 12),
+                      Text(AppStrings.t(lang, 'loadingEllipsis'),
+                          style: const TextStyle(
                               color: AppColors.textMuted,
                               fontSize: 14)),
                     ],
@@ -117,8 +119,8 @@ class StopDetailScreen extends ConsumerWidget {
                       const SizedBox(height: 12),
                       Text(
                         e.toString().contains('Rate limited')
-                            ? 'Too many requests\nWait a moment and retry'
-                            : 'Could not load arrivals',
+                            ? AppStrings.t(lang, 'tooManyRequestsRetry')
+                            : AppStrings.t(lang, 'couldNotLoadArrivals'),
                         textAlign: TextAlign.center,
                         style: const TextStyle(
                             color: AppColors.textMuted, fontSize: 13),
@@ -127,15 +129,15 @@ class StopDetailScreen extends ConsumerWidget {
                       TextButton(
                         onPressed: () => ref.invalidate(stopArrivalsProvider(
                             (stopUID: stopUID, city: defaultCity))),
-                        child: const Text('Retry',
-                            style: TextStyle(color: AppColors.blue)),
+                        child: Text(AppStrings.t(lang, 'retry'),
+                            style: const TextStyle(color: AppColors.blue)),
                       ),
                     ],
                   ),
                 ),
                 data: (arrivals) {
                   if (arrivals.isEmpty) {
-                    return const _EmptyArrivals();
+                    return _EmptyArrivals(lang: lang);
                   }
                   return RefreshIndicator(
                     color: AppColors.blue,
@@ -150,7 +152,7 @@ class StopDetailScreen extends ConsumerWidget {
                       separatorBuilder: (_, __) =>
                           const SizedBox(height: 6),
                       itemBuilder: (_, i) =>
-                          _ArrivalRow(arrival: arrivals[i]),
+                          _ArrivalRow(arrival: arrivals[i], lang: lang),
                     ),
                   );
                 },
@@ -165,7 +167,8 @@ class StopDetailScreen extends ConsumerWidget {
 
 class _ArrivalRow extends StatelessWidget {
   final EstimatedArrival arrival;
-  const _ArrivalRow({required this.arrival});
+  final AppLanguage lang;
+  const _ArrivalRow({required this.arrival, required this.lang});
 
   @override
   Widget build(BuildContext context) {
@@ -187,14 +190,14 @@ class _ArrivalRow extends StatelessWidget {
         ),
         child: Row(
           children: [
-            BusBadge(routeName: arrival.routeName.zhTw),
+            BusBadge(routeName: arrival.routeName.forLang(lang)),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Route ${arrival.routeName.zhTw}',
+                    AppStrings.route(lang, arrival.routeName.forLang(lang)),
                     style: const TextStyle(
                         color: AppColors.textPrimary,
                         fontSize: 13,
@@ -204,14 +207,16 @@ class _ArrivalRow extends StatelessWidget {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    arrival.direction == 0 ? 'Outbound' : 'Inbound',
+                    arrival.direction == 0
+                        ? AppStrings.t(lang, 'outbound')
+                        : AppStrings.t(lang, 'inbound'),
                     style: const TextStyle(
                         color: AppColors.textMuted, fontSize: 11),
                   ),
                 ],
               ),
             ),
-            EtaTag(seconds: arrival.estimateTime),
+            EtaTag(seconds: arrival.estimateTime, language: lang),
           ],
         ),
       ),
@@ -220,17 +225,18 @@ class _ArrivalRow extends StatelessWidget {
 }
 
 class _EmptyArrivals extends StatelessWidget {
-  const _EmptyArrivals();
+  final AppLanguage lang;
+  const _EmptyArrivals({required this.lang});
   @override
-  Widget build(BuildContext context) => const Center(
+  Widget build(BuildContext context) => Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.access_time_outlined,
+            const Icon(Icons.access_time_outlined,
                 color: AppColors.textMuted, size: 40),
-            SizedBox(height: 12),
-            Text('No buses arriving soon',
-                style: TextStyle(
+            const SizedBox(height: 12),
+            Text(AppStrings.t(lang, 'noBusesArrivingSoon'),
+                style: const TextStyle(
                     color: AppColors.textMuted, fontSize: 14)),
           ],
         ),

@@ -2,6 +2,7 @@
 
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'app_strings.dart';
 
 // ─── Colors ───────────────────────────────────────────────────────────────────
 
@@ -45,9 +46,15 @@ ThemeData buildAppTheme() => ThemeData(
 
 // ─── Formatters ───────────────────────────────────────────────────────────────
 
-String formatEta(int seconds) {
-  if (seconds < 0) return 'Not departed';
-  if (seconds == 0) return 'Arriving';
+String formatEta(int seconds, AppLanguage lang) {
+  if (seconds < 0) return AppStrings.t(lang, 'notDeparted');
+  if (seconds == 0) return AppStrings.t(lang, 'arriving');
+  if (lang == AppLanguage.zh) {
+    if (seconds < 60) return '$seconds 秒';
+    final mins = (seconds / 60).round();
+    if (mins >= 60) return '${mins ~/ 60} 小時 ${mins % 60} 分';
+    return '$mins 分';
+  }
   if (seconds < 60) return '${seconds}s';
   final mins = (seconds / 60).round();
   if (mins >= 60) return '${mins ~/ 60}h ${mins % 60}m';

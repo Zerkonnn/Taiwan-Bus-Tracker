@@ -1,14 +1,16 @@
-// Taiwan Bus Tracker — Flutter entry point
+﻿// Taiwan Bus Tracker â€” Flutter entry point
 // Mirrors App.tsx + AppNavigator.tsx from the React Native version
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'providers/bus_providers.dart';
 import 'screens/map_screen.dart';
 import 'screens/search_screen.dart';
 import 'screens/route_detail_screen.dart';
 import 'screens/stop_detail_screen.dart';
 import 'screens/favourites_screen.dart';
 import 'screens/scan_screen.dart';
+import 'utils/app_strings.dart';
 import 'utils/theme.dart';
 
 void main() {
@@ -29,7 +31,7 @@ class TaiwanBusApp extends StatelessWidget {
       title: 'Taiwan Bus Tracker',
       debugShowCheckedModeBanner: false,
       theme: buildAppTheme(),
-      // Named routes — mirrors React Navigation stack + tab navigator
+      // Named routes â€” mirrors React Navigation stack + tab navigator
       initialRoute: '/',
       onGenerateRoute: (settings) {
         switch (settings.name) {
@@ -71,16 +73,16 @@ class TaiwanBusApp extends StatelessWidget {
   }
 }
 
-// ─── Bottom tab navigator ─────────────────────────────────────────────────────
+// â”€â”€â”€ Bottom tab navigator â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-class _MainTabs extends StatefulWidget {
+class _MainTabs extends ConsumerStatefulWidget {
   const _MainTabs();
 
   @override
-  State<_MainTabs> createState() => _MainTabsState();
+  ConsumerState<_MainTabs> createState() => _MainTabsState();
 }
 
-class _MainTabsState extends State<_MainTabs> {
+class _MainTabsState extends ConsumerState<_MainTabs> {
   int _index = 0;
 
   static const _screens = [
@@ -90,6 +92,7 @@ class _MainTabsState extends State<_MainTabs> {
 
   @override
   Widget build(BuildContext context) {
+    final lang = ref.watch(languageProvider);
     return Scaffold(
       backgroundColor: AppColors.bg,
       body: IndexedStack(
@@ -100,20 +103,21 @@ class _MainTabsState extends State<_MainTabs> {
         selectedIndex: _index,
         onDestinationSelected: (i) => setState(() => _index = i),
         backgroundColor: AppColors.bgSheet,
-        indicatorColor: AppColors.blue.withOpacity(0.2),
+        indicatorColor: AppColors.blue.withValues(alpha: 0.2),
         surfaceTintColor: Colors.transparent,
-        destinations: const [
+        destinations: [
           NavigationDestination(
-            icon: Icon(Icons.map_outlined, color: AppColors.textMuted),
-            selectedIcon: Icon(Icons.map_rounded, color: AppColors.blue),
-            label: 'Map',
+            icon: const Icon(Icons.map_outlined, color: AppColors.textMuted),
+            selectedIcon:
+                const Icon(Icons.map_rounded, color: AppColors.blue),
+            label: AppStrings.t(lang, 'mapTab'),
           ),
           NavigationDestination(
-            icon: Icon(Icons.star_outline_rounded,
+            icon: const Icon(Icons.star_outline_rounded,
                 color: AppColors.textMuted),
             selectedIcon:
-                Icon(Icons.star_rounded, color: AppColors.blue),
-            label: 'Saved',
+                const Icon(Icons.star_rounded, color: AppColors.blue),
+            label: AppStrings.t(lang, 'savedTab'),
           ),
         ],
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,

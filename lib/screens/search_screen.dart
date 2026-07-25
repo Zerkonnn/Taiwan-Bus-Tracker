@@ -1,4 +1,4 @@
-// SearchScreen — route search with popular-route quick access
+﻿// SearchScreen â€” route search with popular-route quick access
 // Mirrors src/screens/SearchScreen.tsx
 
 import 'dart:async';
@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/bus_models.dart';
 import '../providers/bus_providers.dart';
+import '../utils/app_strings.dart';
 import '../utils/theme.dart';
 import '../widgets/bus_badge.dart';
 
@@ -48,6 +49,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
         (query: _query, city: defaultCity),
       ),
     );
+    final lang = ref.watch(languageProvider);
 
     return Scaffold(
       backgroundColor: AppColors.bg,
@@ -55,7 +57,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── Header ──────────────────────────────────────────────────────
+            // â”€â”€ Header â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             Padding(
               padding: const EdgeInsets.fromLTRB(4, 8, 16, 8),
               child: Row(
@@ -65,9 +67,9 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                         color: AppColors.textPrimary),
                     onPressed: () => Navigator.pop(context),
                   ),
-                  const Text(
-                    'Search Routes',
-                    style: TextStyle(
+                  Text(
+                    AppStrings.t(lang, 'searchRoutesTitle'),
+                    style: const TextStyle(
                       color: AppColors.textPrimary,
                       fontSize: 18,
                       fontWeight: FontWeight.w500,
@@ -77,7 +79,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
               ),
             ),
 
-            // ── Search input ─────────────────────────────────────────────────
+            // â”€â”€ Search input â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Container(
@@ -91,7 +93,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                   autofocus: true,
                   style: const TextStyle(color: AppColors.textPrimary),
                   decoration: InputDecoration(
-                    hintText: 'Enter route number, e.g. 52…',
+                    hintText: AppStrings.t(lang, 'enterRouteNumberEllipsis'),
                     hintStyle:
                         const TextStyle(color: AppColors.textMuted, fontSize: 14),
                     prefixIcon: const Icon(Icons.search, color: AppColors.blue),
@@ -121,22 +123,28 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
 
             const SizedBox(height: 16),
 
-            // ── Results or popular routes ────────────────────────────────────
+            // â”€â”€ Results or popular routes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: searchAsync.when(
-                  loading: () => const _Loading(),
-                  error: (e, _) => _Error(message: e.toString()),
+                  loading: () => _Loading(lang: lang),
+                  error: (e, _) => _Error(message: e.toString(), lang: lang),
                   data: (results) {
                     if (results.isNotEmpty) {
                       return _ResultList(
-                          results: results, onSelect: _selectRoute);
+                          results: results,
+                          onSelect: _selectRoute,
+                          lang: lang);
+                    }
+                    if (_query.trim().isNotEmpty) {
+                      return _NoResults(query: _query.trim(), lang: lang);
                     }
                     return _EmptyState(
-                      onPopularTap: (num) {
-                        _controller.text = num;
-                        setState(() => _query = num);
+                      lang: lang,
+                      onPopularTap: (routeNum) {
+                        _controller.text = routeNum;
+                        setState(() => _query = routeNum);
                       },
                     );
                   },
@@ -150,24 +158,26 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   }
 }
 
-// ── Sub-widgets ────────────────────────────────────────────────────────────────
+// â”€â”€ Sub-widgets â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class _Loading extends StatelessWidget {
-  const _Loading();
+  final AppLanguage lang;
+  const _Loading({required this.lang});
   @override
-  Widget build(BuildContext context) => const Padding(
-        padding: EdgeInsets.only(top: 16),
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(top: 16),
         child: Row(
           children: [
-            SizedBox(
+            const SizedBox(
               width: 16,
               height: 16,
               child: CircularProgressIndicator(
                   strokeWidth: 2, color: AppColors.blue),
             ),
-            SizedBox(width: 10),
-            Text('Searching…',
-                style: TextStyle(color: AppColors.textMuted, fontSize: 13)),
+            const SizedBox(width: 10),
+            Text(AppStrings.t(lang, 'searching'),
+                style: const TextStyle(
+                    color: AppColors.textMuted, fontSize: 13)),
           ],
         ),
       );
@@ -175,7 +185,8 @@ class _Loading extends StatelessWidget {
 
 class _Error extends StatelessWidget {
   final String message;
-  const _Error({required this.message});
+  final AppLanguage lang;
+  const _Error({required this.message, required this.lang});
   @override
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.only(top: 24),
@@ -187,8 +198,8 @@ class _Error extends StatelessWidget {
             const SizedBox(height: 10),
             Text(
               message.contains('Rate limited')
-                  ? 'Too many requests — wait a moment and try again'
-                  : 'Search unavailable',
+                  ? AppStrings.t(lang, 'tooManyRequestsWait')
+                  : AppStrings.t(lang, 'searchUnavailable'),
               textAlign: TextAlign.center,
               style: const TextStyle(color: AppColors.textMuted, fontSize: 13),
             ),
@@ -200,15 +211,17 @@ class _Error extends StatelessWidget {
 class _ResultList extends StatelessWidget {
   final List<BusRoute> results;
   final void Function(BusRoute) onSelect;
-  const _ResultList({required this.results, required this.onSelect});
+  final AppLanguage lang;
+  const _ResultList(
+      {required this.results, required this.onSelect, required this.lang});
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('RESULTS',
-            style: TextStyle(
+        Text(AppStrings.t(lang, 'resultsHeader'),
+            style: const TextStyle(
                 color: AppColors.textMuted,
                 fontSize: 11,
                 letterSpacing: 1.2)),
@@ -230,14 +243,14 @@ class _ResultList extends StatelessWidget {
                   ),
                   child: Row(
                     children: [
-                      BusBadge(routeName: route.routeName.zhTw),
+                      BusBadge(routeName: route.routeName.forLang(lang)),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              '${route.departureStopNameZh} ↔ ${route.destinationStopNameZh}',
+                              '${route.departureStopNameZh} â†” ${route.destinationStopNameZh}',
                               style: const TextStyle(
                                   color: AppColors.textPrimary,
                                   fontSize: 13,
@@ -246,7 +259,7 @@ class _ResultList extends StatelessWidget {
                               overflow: TextOverflow.ellipsis,
                             ),
                             const SizedBox(height: 2),
-                            Text(route.city,
+                            Text(cityLabel(lang, route.city),
                                 style: const TextStyle(
                                     color: AppColors.textMuted,
                                     fontSize: 11)),
@@ -269,7 +282,8 @@ class _ResultList extends StatelessWidget {
 
 class _EmptyState extends StatelessWidget {
   final void Function(String) onPopularTap;
-  const _EmptyState({required this.onPopularTap});
+  final AppLanguage lang;
+  const _EmptyState({required this.onPopularTap, required this.lang});
 
   @override
   Widget build(BuildContext context) {
@@ -277,8 +291,8 @@ class _EmptyState extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('POPULAR ROUTES',
-              style: TextStyle(
+          Text(AppStrings.t(lang, 'popularRoutesHeader'),
+              style: const TextStyle(
                   color: AppColors.textMuted,
                   fontSize: 11,
                   letterSpacing: 1.2)),
@@ -286,21 +300,21 @@ class _EmptyState extends StatelessWidget {
           Wrap(
             spacing: 8,
             runSpacing: 8,
-            children: _popularRoutes.map((num) {
-              final scheme = routeBadgeColor(num);
+            children: _popularRoutes.map((routeNum) {
+              final scheme = routeBadgeColor(routeNum);
               return GestureDetector(
-                onTap: () => onPopularTap(num),
+                onTap: () => onPopularTap(routeNum),
                 child: Container(
                   padding: const EdgeInsets.symmetric(
                       horizontal: 16, vertical: 8),
                   decoration: BoxDecoration(
-                    color: scheme.bg.withOpacity(0.13),
+                    color: scheme.bg.withValues(alpha: 0.13),
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(
-                        color: scheme.bg.withOpacity(0.3)),
+                        color: scheme.bg.withValues(alpha: 0.3)),
                   ),
                   child: Text(
-                    num,
+                    routeNum,
                     style: TextStyle(
                         color: scheme.bg,
                         fontSize: 14,
@@ -311,15 +325,15 @@ class _EmptyState extends StatelessWidget {
             }).toList(),
           ),
           const SizedBox(height: 24),
-          const Row(
+          Row(
             children: [
-              Icon(Icons.info_outline,
+              const Icon(Icons.info_outline,
                   color: AppColors.textMuted, size: 18),
-              SizedBox(width: 8),
+              const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'Enter a bus route number, e.g. "52" or "301"',
-                  style: TextStyle(
+                  AppStrings.t(lang, 'enterBusRouteNumberHint'),
+                  style: const TextStyle(
                       color: AppColors.textMuted, fontSize: 13),
                 ),
               ),
@@ -329,4 +343,36 @@ class _EmptyState extends StatelessWidget {
       ),
     );
   }
+}
+
+class _NoResults extends StatelessWidget {
+  final String query;
+  final AppLanguage lang;
+  const _NoResults({required this.query, required this.lang});
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(top: 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.search_off_rounded,
+                color: AppColors.textMuted, size: 32),
+            const SizedBox(height: 10),
+            Text(
+              AppStrings.noRoutesFoundForQuery(lang, query),
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                  color: AppColors.textMuted, fontSize: 13),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              AppStrings.t(lang, 'tryRouteNumberLike'),
+              textAlign: TextAlign.center,
+              style:
+                  const TextStyle(color: AppColors.textMuted, fontSize: 12),
+            ),
+          ],
+        ),
+      );
 }

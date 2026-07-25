@@ -1,5 +1,7 @@
 // PTX API data models — mirrors src/types/index.ts from the React Native version
 
+import '../utils/app_strings.dart';
+
 const String defaultCity = 'Taichung';
 
 const Map<String, String> cityLabels = {
@@ -45,6 +47,16 @@ class LocalizedName {
         zhTw: json['Zh_tw'] as String? ?? '',
         en: json['En'] as String? ?? '',
       );
+
+  /// Picks the name for the given language, falling back to whichever is non-empty.
+  String forLang(AppLanguage lang) {
+    if (lang == AppLanguage.en) return en.isNotEmpty ? en : zhTw;
+    return zhTw.isNotEmpty ? zhTw : en;
+  }
+}
+
+String cityLabel(AppLanguage lang, String city) {
+  return lang == AppLanguage.zh ? (cityLabels[city] ?? city) : city;
 }
 
 class BusRealTime {

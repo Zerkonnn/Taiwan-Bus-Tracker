@@ -3,6 +3,7 @@
 
 import 'package:flutter/material.dart';
 import '../models/bus_models.dart';
+import '../utils/app_strings.dart';
 import '../utils/theme.dart';
 import 'bus_badge.dart';
 import 'eta_tag.dart';
@@ -12,6 +13,7 @@ class BusCard extends StatelessWidget {
   final EstimatedArrival? arrival;
   final bool isActive;
   final bool isFavourite;
+  final AppLanguage language;
   final VoidCallback? onTap;
   final VoidCallback? onFavouriteTap;
 
@@ -21,6 +23,7 @@ class BusCard extends StatelessWidget {
     this.arrival,
     this.isActive = false,
     this.isFavourite = false,
+    this.language = AppLanguage.zh,
     this.onTap,
     this.onFavouriteTap,
   });
@@ -70,7 +73,8 @@ class BusCard extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
-            if (arrival != null) EtaTag(seconds: arrival!.estimateTime),
+            if (arrival != null)
+              EtaTag(seconds: arrival!.estimateTime, language: language),
             const SizedBox(width: 8),
             GestureDetector(
               onTap: onFavouriteTap,
