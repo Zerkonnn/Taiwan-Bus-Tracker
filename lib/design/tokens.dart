@@ -15,29 +15,29 @@ class AppPalette {
   AppPalette._();
 
   // Surfaces, darkest → lightest
-  static const canvas = Color(0xFF0F1012); // screen background
-  static const surface = Color(0xFF1B1C1F); // bars, sheets, floating panels
-  static const surfaceRaised = Color(0xFF26272B); // inputs, selected/pressed
+  static const canvas = Color(0xFF0E1116); // screen background
+  static const surface = Color(0xFF171B22); // bars, sheets, floating panels
+  static const surfaceRaised = Color(0xFF232934); // inputs, selected/pressed
   // Panels floating over the (darker) map — one step lighter than the map so
   // they read as raised even where a shadow is invisible on dark tiles.
-  static const elevated = Color(0xFF26282C);
-  static const elevatedEdge = Color(0x1AFFFFFF); // faint top-light edge
-  static const divider = Color(0xFF2E3035); // hairlines between rows
-  static const outline = Color(0xFF3A3C42); // chip / control outlines
+  static const elevated = Color(0xFF222833);
+  static const elevatedEdge = Color(0x24FFFFFF); // faint top-light edge
+  static const divider = Color(0xFF2A313C); // hairlines between rows
+  static const outline = Color(0xFF3A4350); // chip / control outlines
 
   // Text
-  static const textPrimary = Color(0xFFECEDEF);
-  static const textSecondary = Color(0xFFA4A7AE);
-  static const textTertiary = Color(0xFF6F727A);
+  static const textPrimary = Color(0xFFF4F6F9);
+  static const textSecondary = Color(0xFFB9C0CB);
+  static const textTertiary = Color(0xFF8790A0);
 
   // Accent — the only "brand" colour
-  static const accent = Color(0xFF3DB89F);
-  static const onAccent = Color(0xFF05201A);
-  static Color get accentSoft => accent.withValues(alpha: 0.16);
+  static const accent = Color(0xFF1FD1A5);
+  static const onAccent = Color(0xFF00261C);
+  static Color get accentSoft => accent.withValues(alpha: 0.18);
 
   // Status only
-  static const warning = Color(0xFFE8B44C);
-  static const danger = Color(0xFFEF6F61);
+  static const warning = Color(0xFFFFC247);
+  static const danger = Color(0xFFFF6B5B);
 }
 
 class AppSpace {
