@@ -2344,29 +2344,29 @@ class _MapScreenState extends ConsumerState<MapScreen>
                   fontWeight: FontWeight.w600)),
         ]),
         const SizedBox(height: 8),
-        SizedBox(
-          height: 46,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            itemCount: nearbyStations.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 6),
-            itemBuilder: (_, i) {
-              final ns = nearbyStations[i];
-              return NearbyStopChip(
-                stop: ns.stop,
-                distance: ns.distance,
-                dotColor: AppColors.green,
-                onTap: () {
-                  _mapController?.animateCamera(CameraUpdate.newLatLngZoom(
-                      LatLng(ns.stop.stopPosition.lat,
-                          ns.stop.stopPosition.lon),
-                      17));
-                  _mapController?.showMarkerInfoWindow(
-                      MarkerId('nearby_${ns.stop.stopName.zhTw}'));
-                },
-              );
-            },
-          ),
+        // Sized by its chips (no fixed height) so taller CJK text or a larger
+        // system font size can't overflow it.
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(children: [
+            for (final ns in nearbyStations)
+              Padding(
+                padding: const EdgeInsets.only(right: 6),
+                child: NearbyStopChip(
+                  stop: ns.stop,
+                  distance: ns.distance,
+                  dotColor: AppColors.green,
+                  onTap: () {
+                    _mapController?.animateCamera(CameraUpdate.newLatLngZoom(
+                        LatLng(ns.stop.stopPosition.lat,
+                            ns.stop.stopPosition.lon),
+                        17));
+                    _mapController?.showMarkerInfoWindow(
+                        MarkerId('nearby_${ns.stop.stopName.zhTw}'));
+                  },
+                ),
+              ),
+          ]),
         ),
         const SizedBox(height: 12),
         arrivalsView,
