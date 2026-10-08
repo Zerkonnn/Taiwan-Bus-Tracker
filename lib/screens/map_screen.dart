@@ -19,7 +19,8 @@ import '../services/trip_history.dart';
 import '../utils/app_strings.dart';
 import '../utils/crash_recovery.dart';
 import '../utils/theme.dart';
-import '../widgets/nearby_stop_chip.dart';
+import '../design/components.dart';
+import '../design/tokens.dart';
 
 const _defaultCenter = LatLng(24.1477, 120.6736);
 
@@ -354,7 +355,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
     _createStopDotIcon(14).then((icon) {
       if (mounted) setState(() => _stopDotIcon = icon);
     });
-    _createStopDotIcon(12, color: AppColors.green).then((icon) {
+    _createStopDotIcon(12, color: AppPalette.textSecondary).then((icon) {
       if (mounted) setState(() => _nearbyDotIcon = icon);
     });
     _searchFocus.addListener(() {
@@ -1376,99 +1377,58 @@ class _MapScreenState extends ConsumerState<MapScreen>
             ),
           ),
 
-          // ── Search bar + dropdown ────────────────────────────────────────
+          // ── Search bar — suggestions expand inside the same panel; the
+          // scan and language actions live at its right end instead of
+          // floating as separate map buttons.
           Positioned(
-            top: MediaQuery.of(context).padding.top + 8,
-            left: 12,
-            right: 60,
+            top: MediaQuery.of(context).padding.top + AppSpace.sm,
+            left: AppSpace.md,
+            right: AppSpace.md,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Container(
-                  decoration: BoxDecoration(
-                    color: const Color(0xF21F2330),
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                      color: _searchFocus.hasFocus
-                          ? AppColors.borderActive
-                          : AppColors.border,
+                MapSearchBar(
+                  controller: _searchController,
+                  focusNode: _searchFocus,
+                  hint: AppStrings.t(_lang, 'searchLocationHint'),
+                  loading: _loadingSuggestions,
+                  onChanged: _onSearchChanged,
+                  onClear: _clearSearch,
+                  onSubmitted: (v) {
+                    _debounce?.cancel();
+                    setState(() => _loadingSuggestions = true);
+                    _nominatimSearch(v, _userLocation ?? _defaultCenter).then((results) {
+                      if (mounted) {
+                        setState(() {
+                          _suggestions = results.isNotEmpty
+                              ? results
+                              : _filterPopular(v);
+                          _loadingSuggestions = false;
+                          _showSuggestions = true;
+                        });
+                      }
+                    });
+                  },
+                  actions: [
+                    CompactIconButton(
+                      icon: Icons.document_scanner_outlined,
+                      tooltip: AppStrings.t(_lang, 'scanBusStopTitle'),
+                      onTap: () => Navigator.pushNamed(context, '/scan'),
                     ),
-                    boxShadow: const [
-                      BoxShadow(
-                          color: Colors.black38,
-                          blurRadius: 8,
-                          offset: Offset(0, 3))
-                    ],
-                  ),
-                  child: TextField(
-                    controller: _searchController,
-                    focusNode: _searchFocus,
-                    style: const TextStyle(
-                        color: AppColors.textPrimary, fontSize: 14),
-                    decoration: InputDecoration(
-                      hintText: AppStrings.t(_lang, 'searchLocationHint'),
-                      hintStyle: const TextStyle(
-                          color: AppColors.textMuted, fontSize: 13),
-                      prefixIcon: _loadingSuggestions
-                          ? const Padding(
-                              padding: EdgeInsets.all(13),
-                              child: SizedBox(
-                                  width: 14,
-                                  height: 14,
-                                  child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: AppColors.blue)))
-                          : const Icon(Icons.search_rounded,
-                              color: AppColors.blue, size: 20),
-                      suffixIcon: _searchController.text.isNotEmpty
-                          ? IconButton(
-                              icon: const Icon(Icons.close_rounded,
-                                  color: AppColors.textMuted, size: 18),
-                              onPressed: _clearSearch)
-                          : null,
-                      border: InputBorder.none,
-                      contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 4, vertical: 13),
+                    _LangToggle(
+                      lang: _lang,
+                      onTap: () =>
+                          ref.read(languageProvider.notifier).toggle(),
                     ),
-                    onChanged: _onSearchChanged,
-                    textInputAction: TextInputAction.search,
-                    onSubmitted: (v) {
-                      _debounce?.cancel();
-                      setState(() => _loadingSuggestions = true);
-                      _nominatimSearch(v, _userLocation ?? _defaultCenter).then((results) {
-                        if (mounted) {
-                          setState(() {
-                            _suggestions = results.isNotEmpty
-                                ? results
-                                : _filterPopular(v);
-                            _loadingSuggestions = false;
-                            _showSuggestions = true;
-                          });
-                        }
-                      });
-                    },
-                  ),
+                  ],
+                  below: _showSuggestions
+                      ? ConstrainedBox(
+                          constraints: const BoxConstraints(maxHeight: 360),
+                          child: SingleChildScrollView(
+                              child: _buildSuggestionsList()),
+                        )
+                      : null,
                 ),
-                if (_showSuggestions) ...[
-                  const SizedBox(height: 4),
-                  Material(
-                    color: Colors.transparent,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: const Color(0xF21F2330),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: AppColors.border),
-                        boxShadow: const [
-                          BoxShadow(
-                              color: Colors.black38,
-                              blurRadius: 8,
-                              offset: Offset(0, 3))
-                        ],
-                      ),
-                      child: _buildSuggestionsList(),
-                    ),
-                  ),
-                ],
 
                 // ── Usual trip banner — offered automatically when the user
                 // has made a trip from around here on 2+ days ─────────────
@@ -1477,89 +1437,28 @@ class _MapScreenState extends ConsumerState<MapScreen>
                     !_showSuggestions &&
                     !_inRouteDetail &&
                     !_usualTripDismissed) ...[
-                  const SizedBox(height: 4),
-                  GestureDetector(
+                  const SizedBox(height: AppSpace.sm),
+                  MapPromptChip(
+                    icon: Icons.history_rounded,
+                    label: AppStrings.usualTripBanner(
+                        _lang,
+                        _lang == AppLanguage.en &&
+                                _frequentTrips.first.shortNameEn.isNotEmpty
+                            ? _frequentTrips.first.shortNameEn
+                            : _frequentTrips.first.shortName),
+                    actionLabel: AppStrings.t(_lang, 'viewRoutes'),
                     onTap: () => _selectSuggestion(_frequentTrips.first),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: const Color(0xF21F2330),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                            color: AppColors.green.withValues(alpha: 0.5)),
-                        boxShadow: const [
-                          BoxShadow(
-                              color: Colors.black38,
-                              blurRadius: 8,
-                              offset: Offset(0, 3))
-                        ],
-                      ),
-                      child: Row(children: [
-                        const Icon(Icons.history_rounded,
-                            color: AppColors.green, size: 16),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                AppStrings.usualTripBanner(
-                                    _lang,
-                                    _lang == AppLanguage.en &&
-                                            _frequentTrips.first.shortNameEn
-                                                .isNotEmpty
-                                        ? _frequentTrips.first.shortNameEn
-                                        : _frequentTrips.first.shortName),
-                                style: const TextStyle(
-                                    color: AppColors.textPrimary,
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w500),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              Text(AppStrings.t(_lang, 'tapForRecommended'),
-                                  style: const TextStyle(
-                                      color: AppColors.green, fontSize: 11)),
-                            ],
-                          ),
-                        ),
-                        GestureDetector(
-                          onTap: () =>
-                              setState(() => _usualTripDismissed = true),
-                          child: const Icon(Icons.close_rounded,
-                              color: AppColors.textMuted, size: 18),
-                        ),
-                      ]),
-                    ),
+                    onDismiss: () =>
+                        setState(() => _usualTripDismissed = true),
                   ),
                 ],
 
                 // ── ETA card (shown after a destination is selected) ────────
                 if (_selectedDestination != null && !_showSuggestions) ...[
-                  const SizedBox(height: 4),
+                  const SizedBox(height: AppSpace.sm),
                   Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 11),
-                    decoration: BoxDecoration(
-                      color: const Color(0xF21F2330),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: _fetchingDirections || _transportMode == null
-                            ? AppColors.border
-                            : _transportMode == 'car'
-                                ? AppColors.yellow.withValues(alpha: 0.5)
-                                : _transportMode == 'walk'
-                                    ? AppColors.blue.withValues(alpha: 0.5)
-                                    : AppColors.green.withValues(alpha: 0.5),
-                      ),
-                      boxShadow: const [
-                        BoxShadow(
-                            color: Colors.black38,
-                            blurRadius: 8,
-                            offset: Offset(0, 3))
-                      ],
-                    ),
+                    padding: const EdgeInsets.all(AppSpace.md),
+                    decoration: AppDecor.floatingPanel,
                     child: _fetchingDirections
                         ? Row(children: [
                             const SizedBox(
@@ -1770,60 +1669,17 @@ class _MapScreenState extends ConsumerState<MapScreen>
             ),
           ),
 
-          // ── Right-side buttons ───────────────────────────────────────────
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 8,
-            right: 12,
-            child: Column(
-              children: [
-                _MapBtn(
-                  icon: Icons.my_location_rounded,
-                  color: AppColors.blue,
-                  onTap: () {
-                    if (_userLocation != null) {
-                      _mapController?.animateCamera(
-                        CameraUpdate.newLatLngZoom(_userLocation!, 15),
-                      );
-                    }
-                  },
-                ),
-                const SizedBox(height: 8),
-                _LangBtn(
-                  lang: _lang,
-                  onTap: () =>
-                      ref.read(languageProvider.notifier).toggle(),
-                ),
-                const SizedBox(height: 8),
-                _MapBtn(
-                  icon: Icons.document_scanner_rounded,
-                  color: AppColors.textSecondary,
-                  onTap: () => Navigator.pushNamed(context, '/scan'),
-                ),
-              ],
-            ),
-          ),
-
           // ── Back button (visible only in route detail) ──────────────
           if (_inRouteDetail)
             Positioned(
-              bottom: MediaQuery.of(context).padding.bottom + 90,
-              left: 12,
+              bottom: sheetTop + AppSpace.md,
+              left: AppSpace.md,
               child: GestureDetector(
                 onTap: _exitRouteDetail,
                 child: Container(
                   padding: const EdgeInsets.symmetric(
                       horizontal: 14, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: const Color(0xF21F2330),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppColors.border),
-                    boxShadow: const [
-                      BoxShadow(
-                          color: Colors.black38,
-                          blurRadius: 6,
-                          offset: Offset(0, 2))
-                    ],
-                  ),
+                  decoration: AppDecor.floatingPanel,
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
                     const Icon(Icons.arrow_back_rounded,
                         color: AppColors.textPrimary, size: 16),
@@ -1865,10 +1721,10 @@ class _MapScreenState extends ConsumerState<MapScreen>
             builder: (context, scrollController) {
               return Container(
                 decoration: const BoxDecoration(
-                  color: AppColors.bgSheet,
-                  borderRadius:
-                      BorderRadius.vertical(top: Radius.circular(20)),
-                  border: Border(top: BorderSide(color: AppColors.border)),
+                  color: AppPalette.surface,
+                  borderRadius: BorderRadius.vertical(
+                      top: Radius.circular(AppRadius.sheet)),
+                  boxShadow: AppShadow.sheet,
                 ),
                 child: _inRouteDetail
                     ? _buildRouteDetailSheet(
@@ -1882,9 +1738,27 @@ class _MapScreenState extends ConsumerState<MapScreen>
 
           // ── Voice mic button — tracks the sheet's live top edge exactly
           // like GoogleMap does, so it never sits underneath the sheet.
+          // Map controls step aside when the sheet covers most of the map
+          if (!_showSuggestions && _sheetExtent < 0.5)
+            Positioned(
+              bottom: sheetTop + AppSpace.md + 52 + AppSpace.sm,
+              right: AppSpace.md + 4,
+              child: MapControlButton(
+                icon: Icons.my_location_rounded,
+                tooltip: AppStrings.t(_lang, 'myLocation'),
+                onTap: () {
+                  if (_userLocation != null) {
+                    _mapController?.animateCamera(
+                      CameraUpdate.newLatLngZoom(_userLocation!, 15),
+                    );
+                  }
+                },
+              ),
+            ),
+          if (_sheetExtent < 0.5 || _isListening)
           Positioned(
-            bottom: sheetTop + 16,
-            right: 12,
+            bottom: sheetTop + AppSpace.md,
+            right: AppSpace.md,
             child: _VoiceMicButton(
               isListening: _isListening,
               pulse: _pulseController,
@@ -1896,25 +1770,14 @@ class _MapScreenState extends ConsumerState<MapScreen>
           // ── Live transcription bubble while listening ──────────────────
           if (_isListening)
             Positioned(
-              bottom: sheetTop + 72,
-              left: 20,
-              right: 68,
+              bottom: sheetTop + AppSpace.md,
+              left: AppSpace.md,
+              right: 52 + AppSpace.md * 2,
               child: IgnorePointer(
                 child: Container(
                   padding: const EdgeInsets.symmetric(
                       horizontal: 14, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: const Color(0xF21F2330),
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                        color: AppColors.blue.withValues(alpha: 0.5)),
-                    boxShadow: const [
-                      BoxShadow(
-                          color: Colors.black38,
-                          blurRadius: 8,
-                          offset: Offset(0, 3))
-                    ],
-                  ),
+                  decoration: AppDecor.floatingPanel,
                   child: Row(children: [
                     const Icon(Icons.graphic_eq_rounded,
                         color: AppColors.blue, size: 16),
@@ -2040,49 +1903,32 @@ class _MapScreenState extends ConsumerState<MapScreen>
   ) {
     return ListView(
       controller: sc,
-      padding: EdgeInsets.fromLTRB(
-          12, 0, 12, 12 + MediaQuery.of(context).padding.bottom),
+      padding: EdgeInsets.only(
+          bottom: AppSpace.lg + MediaQuery.of(context).padding.bottom),
       children: [
-        // Drag handle — drag or tap to cycle through snap positions
-        GestureDetector(
-          onTap: _toggleSheet,
-          behavior: HitTestBehavior.opaque,
-          child: Center(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 10),
-              child: Container(
-                  width: 36,
-                  height: 4,
-                  decoration: BoxDecoration(
-                      color: const Color(0xFF3A3D48),
-                      borderRadius: BorderRadius.circular(2))),
-            ),
+        SheetHandle(onTap: _toggleSheet),
+        SheetTabs(
+          labels: [
+            AppStrings.t(_lang, 'nearbyTab'),
+            AppStrings.t(_lang, 'routesTab'),
+          ],
+          selected: _sheetTab,
+          onSelect: (i) => setState(() => _sheetTab = i),
+        ),
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 180),
+          layoutBuilder: (current, previous) => Stack(
+            alignment: Alignment.topCenter,
+            children: [...previous, if (current != null) current],
+          ),
+          child: KeyedSubtree(
+            key: ValueKey(_sheetTab),
+            child: _sheetTab == 0
+                ? _buildNearbyTab(nearbyArrivals, sortedNearby,
+                    nearbyStations, nearbyLoading)
+                : _buildSearchTab(favourites),
           ),
         ),
-        // Tab bar
-        Container(
-          decoration: BoxDecoration(
-            color: AppColors.bgCard,
-            borderRadius: BorderRadius.circular(10),
-          ),
-          padding: const EdgeInsets.all(3),
-          child: Row(children: [
-            _SheetTab(
-                label: AppStrings.t(_lang, 'nearbyTab'),
-                active: _sheetTab == 0,
-                onTap: () => setState(() => _sheetTab = 0)),
-            _SheetTab(
-                label: AppStrings.t(_lang, 'routesTab'),
-                active: _sheetTab == 1,
-                onTap: () => setState(() => _sheetTab = 1)),
-          ]),
-        ),
-        const SizedBox(height: 12),
-        if (_sheetTab == 0)
-          _buildNearbyTab(
-              nearbyArrivals, sortedNearby, nearbyStations, nearbyLoading)
-        else
-          _buildSearchTab(favourites),
       ],
     );
   }
@@ -2131,48 +1977,23 @@ class _MapScreenState extends ConsumerState<MapScreen>
       padding: EdgeInsets.fromLTRB(
           12, 0, 12, 12 + MediaQuery.of(context).padding.bottom),
       children: [
-        GestureDetector(
-          onTap: _toggleSheet,
-          behavior: HitTestBehavior.opaque,
-          child: Center(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 10),
-              child: Container(
-                  width: 36,
-                  height: 4,
-                  decoration: BoxDecoration(
-                      color: const Color(0xFF3A3D48),
-                      borderRadius: BorderRadius.circular(2))),
-            ),
-          ),
-        ),
+        SheetHandle(onTap: _toggleSheet),
 
         // Direction tabs — show when stops are loaded
         if (!isLoading && (outEnd.isNotEmpty || inEnd.isNotEmpty)) ...[
-          Container(
-            decoration: BoxDecoration(
-              color: AppColors.bgCard,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            padding: const EdgeInsets.all(3),
-            child: Row(children: [
-              _SheetTab(
-                label: outEnd.isNotEmpty
-                    ? AppStrings.toDestination(_lang, outEnd)
-                    : AppStrings.t(_lang, 'outbound'),
-                active: _selectedDirection == 0,
-                onTap: () => setState(() => _selectedDirection = 0),
-              ),
-              _SheetTab(
-                label: inEnd.isNotEmpty
-                    ? AppStrings.toDestination(_lang, inEnd)
-                    : AppStrings.t(_lang, 'inbound'),
-                active: _selectedDirection == 1,
-                onTap: () => setState(() => _selectedDirection = 1),
-              ),
-            ]),
+          SheetTabs(
+            labels: [
+              outEnd.isNotEmpty
+                  ? AppStrings.toDestination(_lang, outEnd)
+                  : AppStrings.t(_lang, 'outbound'),
+              inEnd.isNotEmpty
+                  ? AppStrings.toDestination(_lang, inEnd)
+                  : AppStrings.t(_lang, 'inbound'),
+            ],
+            selected: _selectedDirection ?? 0,
+            onSelect: (i) => setState(() => _selectedDirection = i),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: AppSpace.sm),
         ],
 
         // Loading state
@@ -2332,30 +2153,23 @@ class _MapScreenState extends ConsumerState<MapScreen>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(children: [
-          const Icon(Icons.place_rounded, color: AppColors.green, size: 14),
-          const SizedBox(width: 4),
-          Text(
-              AppStrings.nearbyStopsCount(
-                  _lang, nearbyStations.length, _nearbyRadius),
-              style: const TextStyle(
-                  color: AppColors.textPrimary,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600)),
-        ]),
-        const SizedBox(height: 8),
+        SectionHeader(
+          AppStrings.nearbyStopsCount(
+              _lang, nearbyStations.length, _nearbyRadius),
+          icon: Icons.place_outlined,
+        ),
         // Sized by its chips (no fixed height) so taller CJK text or a larger
         // system font size can't overflow it.
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: AppSpace.lg),
           child: Row(children: [
             for (final ns in nearbyStations)
               Padding(
-                padding: const EdgeInsets.only(right: 6),
-                child: NearbyStopChip(
-                  stop: ns.stop,
-                  distance: ns.distance,
-                  dotColor: AppColors.green,
+                padding: const EdgeInsets.only(right: AppSpace.sm),
+                child: OptionChip(
+                  label:
+                      '${ns.stop.stopName.forLang(_lang)}  ${_formatMeters(ns.distance)}',
                   onTap: () {
                     _mapController?.animateCamera(CameraUpdate.newLatLngZoom(
                         LatLng(ns.stop.stopPosition.lat,
@@ -2368,163 +2182,72 @@ class _MapScreenState extends ConsumerState<MapScreen>
               ),
           ]),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: AppSpace.xs),
         arrivalsView,
       ],
     );
   }
+
+  static String _formatMeters(double meters) => meters < 1000
+      ? '${meters.round()} m'
+      : '${(meters / 1000).toStringAsFixed(1)} km';
 
   Widget _buildNearbyArrivals(
       List<EstimatedArrival> arrivals,
       List<NearbyStop> sortedNearby,
       bool loading) {
     if (_userLocation == null) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 24),
-        child: Center(
-            child: Text(AppStrings.t(_lang, 'gettingLocation'),
-                style: const TextStyle(
-                    color: AppColors.textMuted, fontSize: 13))),
-      );
+      return SheetMessage(
+          loading: true, text: AppStrings.t(_lang, 'gettingLocation'));
     }
     if (sortedNearby.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 24),
-        child: Center(
-            child: Text(AppStrings.t(_lang, 'noNearbyStops'),
-                style: const TextStyle(
-                    color: AppColors.textMuted, fontSize: 13))),
-      );
+      return SheetMessage(
+          icon: Icons.location_off_outlined,
+          text: AppStrings.t(_lang, 'noNearbyStops'));
     }
     // First load — show spinner instead of "no buses"
-    if (loading && arrivals.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 24),
-        child: Center(
-            child: CircularProgressIndicator(
-                color: AppColors.blue, strokeWidth: 2)),
-      );
-    }
+    if (loading && arrivals.isEmpty) return const SheetMessage(loading: true);
     if (arrivals.isEmpty) {
       final h = DateTime.now().hour;
       final offHours = h < 6 || h >= 23;
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (offHours) ...[
-              Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  color: AppColors.yellow.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                      color: AppColors.yellow.withValues(alpha: 0.3)),
-                ),
-                child: Row(children: [
-                  const Icon(Icons.schedule_rounded,
-                      color: AppColors.yellow, size: 14),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      AppStrings.t(_lang, 'busServiceInactiveShort'),
-                      style: const TextStyle(
-                          color: AppColors.yellow, fontSize: 12),
-                    ),
-                  ),
-                ]),
-              ),
-            ] else ...[
-              const Icon(Icons.directions_bus_outlined,
-                  color: AppColors.textMuted, size: 28),
-              const SizedBox(height: 8),
-              Text(AppStrings.t(_lang, 'noBusesArrivingSoon'),
-                  style: const TextStyle(
-                      color: AppColors.textMuted, fontSize: 13)),
-            ],
-          ],
-        ),
+      return SheetMessage(
+        icon: offHours
+            ? Icons.schedule_rounded
+            : Icons.directions_bus_outlined,
+        text: AppStrings.t(
+            _lang, offHours ? 'busServiceInactiveShort' : 'noBusesArrivingSoon'),
       );
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(AppStrings.t(_lang, 'arrivingSoonHeader'),
-            style: const TextStyle(
-                color: AppColors.textMuted,
-                fontSize: 11,
-                letterSpacing: 1.2)),
-        const SizedBox(height: 8),
-        ...arrivals.map((a) => _buildArrivalCard(a)),
+        SectionHeader(AppStrings.t(_lang, 'arrivingSoonHeader')),
+        for (var i = 0; i < arrivals.length; i++)
+          _buildArrivalCard(arrivals[i],
+              divider: i < arrivals.length - 1),
       ],
     );
   }
 
-  Widget _buildArrivalCard(EstimatedArrival arrival) {
+  // One live arrival: route · stop and direction · countdown.
+  Widget _buildArrivalCard(EstimatedArrival arrival, {bool divider = true}) {
     final mins = (arrival.estimateTime / 60).ceil();
     final etaLabel = mins <= 0
         ? AppStrings.t(_lang, 'arriving')
         : AppStrings.minsLabel(_lang, mins);
-    final etaColor =
-        mins <= 1 ? AppColors.green : mins <= 5 ? AppColors.yellow : AppColors.textMuted;
-
-    return GestureDetector(
+    return ListRow(
+      leading: RouteBadge(arrival.routeName.forLang(_lang)),
+      title: Text(arrival.stopName.forLang(_lang)),
+      subtitle: Text(arrival.direction == 0
+          ? AppStrings.t(_lang, 'outbound')
+          : AppStrings.t(_lang, 'inbound')),
+      trailing: Text(etaLabel,
+          style: AppText.time.copyWith(color: etaColor(arrival.estimateTime))),
+      divider: divider,
       onTap: () => _enterRouteDetail(
         arrival.routeName.zhTw,
         arrival.direction,
         userStopUID: arrival.stopUID,
-      ),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 6),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: AppColors.bgCard,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.border),
-        ),
-        child: Row(children: [
-          Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-                color: AppColors.blue.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(6)),
-            child: Text(arrival.routeName.forLang(_lang),
-                style: const TextStyle(
-                    color: AppColors.blue,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700)),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(arrival.stopName.forLang(_lang),
-                    style: const TextStyle(
-                        color: AppColors.textPrimary, fontSize: 13),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis),
-                Text(
-                    arrival.direction == 0
-                        ? AppStrings.t(_lang, 'outbound')
-                        : AppStrings.t(_lang, 'inbound'),
-                    style: const TextStyle(
-                        color: AppColors.textMuted, fontSize: 11)),
-              ],
-            ),
-          ),
-          Text(etaLabel,
-              style: TextStyle(
-                  color: etaColor,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600)),
-          const SizedBox(width: 4),
-          const Icon(Icons.chevron_right_rounded,
-              color: AppColors.textMuted, size: 16),
-        ]),
       ),
     );
   }
@@ -2533,32 +2256,24 @@ class _MapScreenState extends ConsumerState<MapScreen>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Search field
-        Container(
-          decoration: BoxDecoration(
-            color: AppColors.bgCard,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppColors.border),
-          ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+              AppSpace.lg, AppSpace.md, AppSpace.lg, 0),
           child: TextField(
             controller: _busSearchController,
-            style: const TextStyle(
-                color: AppColors.textPrimary, fontSize: 14),
+            style: AppText.body,
+            cursorColor: AppPalette.accent,
+            keyboardType: TextInputType.text,
+            textInputAction: TextInputAction.search,
             decoration: InputDecoration(
               hintText: AppStrings.t(_lang, 'enterRouteNumberHint'),
-              hintStyle: const TextStyle(
-                  color: AppColors.textMuted, fontSize: 13),
               prefixIcon: const Icon(Icons.search_rounded,
-                  color: AppColors.blue, size: 20),
-              border: InputBorder.none,
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 4, vertical: 13),
+                  color: AppPalette.textSecondary, size: 20),
+              isDense: true,
             ),
-            onChanged: (v) =>
-                setState(() => _busSearchQuery = v.trim()),
+            onChanged: (v) => setState(() => _busSearchQuery = v.trim()),
           ),
         ),
-        const SizedBox(height: 12),
         if (_busSearchQuery.isNotEmpty)
           Consumer(builder: (ctx, cref, _) {
             final searchAsync = cref.watch(routeSearchProvider((
@@ -2566,50 +2281,43 @@ class _MapScreenState extends ConsumerState<MapScreen>
               city: defaultCity,
             )));
             return searchAsync.when(
-              loading: () => const Padding(
-                padding: EdgeInsets.symmetric(vertical: 16),
-                child: Center(
-                    child: CircularProgressIndicator(
-                        color: AppColors.blue, strokeWidth: 2)),
-              ),
-              error: (_, __) => Text(
-                  AppStrings.t(_lang, 'searchFailedTryAgain'),
-                  style: const TextStyle(
-                      color: AppColors.textMuted, fontSize: 13)),
+              loading: () => const SheetMessage(loading: true),
+              error: (_, __) => SheetMessage(
+                  icon: Icons.cloud_off_rounded,
+                  text: AppStrings.t(_lang, 'searchFailedTryAgain')),
               data: (routes) {
                 if (routes.isEmpty) {
-                  return Text(AppStrings.t(_lang, 'routeNotFound'),
-                      style: const TextStyle(
-                          color: AppColors.textMuted, fontSize: 13));
+                  return SheetMessage(
+                      icon: Icons.search_off_rounded,
+                      text: AppStrings.t(_lang, 'routeNotFound'));
                 }
+                final rows = [
+                  for (final r in routes) ...[(r, 0), (r, 1)],
+                ];
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(AppStrings.resultsCount(_lang, routes.length),
-                        style: const TextStyle(
-                            color: AppColors.textMuted,
-                            fontSize: 11,
-                            letterSpacing: 1.2)),
-                    const SizedBox(height: 8),
-                    ...routes.expand((r) => [
-                          _buildDirectionCard(r, 0, favourites),
-                          _buildDirectionCard(r, 1, favourites),
-                        ]),
+                    SectionHeader(AppStrings.resultsCount(_lang, routes.length)),
+                    for (var i = 0; i < rows.length; i++)
+                      _buildDirectionCard(rows[i].$1, rows[i].$2, favourites,
+                          divider: i < rows.length - 1),
                   ],
                 );
               },
             );
           })
         else
-          Text(AppStrings.t(_lang, 'searchTaichungRoutes'),
-              style: const TextStyle(
-                  color: AppColors.textMuted, fontSize: 13)),
+          SheetMessage(
+              icon: Icons.directions_bus_outlined,
+              text: AppStrings.t(_lang, 'searchTaichungRoutes')),
       ],
     );
   }
 
+  // One route + direction: number · "from → to" · favourite star.
   Widget _buildDirectionCard(
-      BusRoute route, int direction, List<String> favourites) {
+      BusRoute route, int direction, List<String> favourites,
+      {bool divider = true}) {
     final from = direction == 0
         ? route.departureStopNameZh
         : route.destinationStopNameZh;
@@ -2621,84 +2329,18 @@ class _MapScreenState extends ConsumerState<MapScreen>
         : AppStrings.t(_lang, 'inbound');
     final isFav = favourites.contains(route.routeName.zhTw);
 
-    return GestureDetector(
-      onTap: () => _enterRouteDetail(route.routeName.zhTw, direction),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 6),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-        decoration: BoxDecoration(
-          color: AppColors.bgCard,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.border),
-        ),
-        child: Row(children: [
-          // Route number badge
-          Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-                color: AppColors.blue.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(8)),
-            child: Text(route.routeName.forLang(_lang),
-                style: const TextStyle(
-                    color: AppColors.blue,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800)),
-          ),
-          const SizedBox(width: 12),
-          // Direction
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(children: [
-                  Text(from,
-                      style: const TextStyle(
-                          color: AppColors.textPrimary,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500)),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 6),
-                    child: Icon(Icons.arrow_forward_rounded,
-                        color: AppColors.textMuted, size: 13),
-                  ),
-                  Text(to,
-                      style: const TextStyle(
-                          color: AppColors.textPrimary,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500)),
-                ]),
-                Container(
-                  margin: const EdgeInsets.only(top: 3),
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 5, vertical: 1),
-                  decoration: BoxDecoration(
-                      color: AppColors.border,
-                      borderRadius: BorderRadius.circular(3)),
-                  child: Text(dirLabel,
-                      style: const TextStyle(
-                          color: AppColors.textMuted,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600)),
-                ),
-              ],
-            ),
-          ),
-          // Favourite + chevron
-          GestureDetector(
-            onTap: () => ref
-                .read(favouritesProvider.notifier)
-                .toggle(route.routeName.zhTw),
-            child: Icon(
-                isFav ? Icons.star_rounded : Icons.star_border_rounded,
-                color: isFav ? AppColors.yellow : AppColors.textMuted,
-                size: 18),
-          ),
-          const SizedBox(width: 6),
-          const Icon(Icons.chevron_right_rounded,
-              color: AppColors.textMuted, size: 16),
-        ]),
+    return ListRow(
+      leading: RouteBadge(route.routeName.forLang(_lang)),
+      title: Text('$from → $to'),
+      subtitle: Text(dirLabel),
+      trailing: CompactIconButton(
+        icon: isFav ? Icons.star_rounded : Icons.star_outline_rounded,
+        color: isFav ? AppPalette.accent : AppPalette.textTertiary,
+        onTap: () =>
+            ref.read(favouritesProvider.notifier).toggle(route.routeName.zhTw),
       ),
+      divider: divider,
+      onTap: () => _enterRouteDetail(route.routeName.zhTw, direction),
     );
   }
 
@@ -2736,7 +2378,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
       runSpacing: 6,
       children: [
         for (var i = 0; i < _routeChoices.length; i++)
-          _RouteOptionChip(
+          OptionChip(
             icon: icons[_routeChoices[i].kinds.first]!,
             label: '${_routeChoices[i].kinds.map((k) => AppStrings.t(_lang, labelKeys[k]!)).join('·')}'
                 ' · ${metric(_routeChoices[i].kinds.first, _routeChoices[i].option)}',
@@ -2795,49 +2437,6 @@ class _MapScreenState extends ConsumerState<MapScreen>
 
 // ─── Widgets ──────────────────────────────────────────────────────────────────
 
-class _RouteOptionChip extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-  const _RouteOptionChip({
-    required this.icon,
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final color = selected ? AppColors.green : AppColors.textMuted;
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(
-          color: selected
-              ? AppColors.green.withValues(alpha: 0.15)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-              color: selected
-                  ? AppColors.green.withValues(alpha: 0.5)
-                  : AppColors.border),
-        ),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(icon, color: color, size: 12),
-          const SizedBox(width: 3),
-          Text(label,
-              style: TextStyle(
-                  color: color,
-                  fontSize: 11,
-                  fontWeight: selected ? FontWeight.w600 : FontWeight.w400)),
-        ]),
-      ),
-    );
-  }
-}
-
 class _SuggestionTile extends StatelessWidget {
   final _LocationResult result;
   final bool isLast;
@@ -2856,71 +2455,23 @@ class _SuggestionTile extends StatelessWidget {
     final showEnFirst = lang == AppLanguage.en && result.shortNameEn.isNotEmpty;
     final primaryName = showEnFirst ? result.shortNameEn : result.shortName;
     final secondaryName = showEnFirst ? result.shortName : result.shortNameEn;
+    final isTrip = result.tripDays > 0;
+    final detail = [
+      if (isTrip) AppStrings.frequentTripLabel(lang, result.tripDays),
+      if (secondaryName.isNotEmpty) secondaryName,
+      if (!isTrip && secondaryName.isEmpty) result.displayName,
+    ].join(' · ');
 
-    return InkWell(
+    return ListRow(
+      leading: Icon(isTrip ? Icons.history_rounded : Icons.place_outlined,
+          size: 20,
+          color: isTrip ? AppPalette.accent : AppPalette.textSecondary),
+      title: Text(primaryName),
+      subtitle: detail.isEmpty ? null : Text(detail),
+      trailing: const Icon(Icons.north_west_rounded,
+          color: AppPalette.textTertiary, size: 16),
+      divider: !isLast,
       onTap: onTap,
-      borderRadius: isLast
-          ? const BorderRadius.vertical(bottom: Radius.circular(14))
-          : BorderRadius.zero,
-      child: Container(
-        padding:
-            const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-        decoration: BoxDecoration(
-          border: isLast
-              ? null
-              : const Border(
-                  bottom:
-                      BorderSide(color: AppColors.border, width: 0.5)),
-        ),
-        child: Row(
-          children: [
-            Icon(
-                result.tripDays > 0
-                    ? Icons.history_rounded
-                    : Icons.place_outlined,
-                color: result.tripDays > 0 ? AppColors.green : AppColors.blue,
-                size: 16),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Show both Chinese and English when both are available
-                  Text(primaryName,
-                      style: const TextStyle(
-                          color: AppColors.textPrimary,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis),
-                  if (secondaryName.isNotEmpty) ...[
-                    const SizedBox(height: 1),
-                    Text(secondaryName,
-                        style: const TextStyle(
-                            color: AppColors.textSecondary, fontSize: 11),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis),
-                  ],
-                  if (result.tripDays > 0) ...[
-                    const SizedBox(height: 1),
-                    Text(AppStrings.frequentTripLabel(lang, result.tripDays),
-                        style: const TextStyle(
-                            color: AppColors.green, fontSize: 11)),
-                  ],
-                  const SizedBox(height: 1),
-                  Text(result.displayName,
-                      style: const TextStyle(
-                          color: AppColors.textMuted, fontSize: 11),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis),
-                ],
-              ),
-            ),
-            const Icon(Icons.north_west_rounded,
-                color: AppColors.textMuted, size: 13),
-          ],
-        ),
-      ),
     );
   }
 }
@@ -2970,19 +2521,16 @@ class _VoiceMicButton extends StatelessWidget {
               height: 52,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: isListening ? AppColors.red : const Color(0xCC1F2330),
+                color: isListening ? AppPalette.danger : AppPalette.elevated,
                 border: Border.all(
-                    color: isListening ? AppColors.red : AppColors.border),
-                boxShadow: const [
-                  BoxShadow(
-                      color: Colors.black38,
-                      blurRadius: 8,
-                      offset: Offset(0, 3))
-                ],
+                    color: isListening
+                        ? AppPalette.danger
+                        : AppPalette.elevatedEdge),
+                boxShadow: AppShadow.floating,
               ),
               child: Icon(
                 isListening ? Icons.mic_rounded : Icons.mic_none_rounded,
-                color: isListening ? Colors.white : AppColors.blue,
+                color: isListening ? Colors.white : AppPalette.accent,
                 size: 24,
               ),
             ),
@@ -2993,88 +2541,27 @@ class _VoiceMicButton extends StatelessWidget {
   }
 }
 
-class _MapBtn extends StatelessWidget {
-  final IconData icon;
-  final Color color;
-  final VoidCallback onTap;
-  const _MapBtn(
-      {required this.icon, required this.color, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(
-          color: const Color(0xCC1F2330),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: AppColors.border),
-        ),
-        child: Icon(icon, color: color, size: 18),
-      ),
-    );
-  }
-}
-
-class _LangBtn extends StatelessWidget {
+// Language switch inside the search bar: shows the current language.
+class _LangToggle extends StatelessWidget {
   final AppLanguage lang;
   final VoidCallback onTap;
-  const _LangBtn({required this.lang, required this.onTap});
+  const _LangToggle({required this.lang, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(
-          color: const Color(0xCC1F2330),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: AppColors.border),
-        ),
-        alignment: Alignment.center,
-        child: Text(
-          lang == AppLanguage.zh ? '中' : 'EN',
-          style: const TextStyle(
-            color: AppColors.textSecondary,
-            fontSize: 13,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SheetTab extends StatelessWidget {
-  final String label;
-  final bool active;
-  final VoidCallback onTap;
-  const _SheetTab(
-      {required this.label, required this.active, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: GestureDetector(
+    return Tooltip(
+      message: AppStrings.t(lang, 'switchLanguage'),
+      child: InkResponse(
         onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          decoration: BoxDecoration(
-            color: active ? AppColors.bgSheet : Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          alignment: Alignment.center,
-          child: Text(
-            label,
-            style: TextStyle(
-              color: active ? AppColors.textPrimary : AppColors.textMuted,
-              fontSize: 13,
-              fontWeight: active ? FontWeight.w600 : FontWeight.normal,
+        radius: 20,
+        child: SizedBox(
+          width: 40,
+          height: 40,
+          child: Center(
+            child: Text(
+              lang == AppLanguage.zh ? '中' : 'EN',
+              style: AppText.label.copyWith(
+                  color: AppPalette.textPrimary, fontWeight: FontWeight.w600),
             ),
           ),
         ),

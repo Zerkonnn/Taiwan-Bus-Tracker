@@ -13,6 +13,7 @@ import 'screens/scan_screen.dart';
 import 'utils/app_strings.dart';
 import 'utils/crash_recovery.dart';
 import 'utils/theme.dart';
+import 'design/tokens.dart';
 
 void main() {
   // CrashRecovery replaces the red error screen with an automatic restart.
@@ -102,31 +103,32 @@ class _MainTabsState extends ConsumerState<_MainTabs> {
         index: _index,
         children: _screens,
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _index,
-        onDestinationSelected: (i) {
-          CrashRecovery.session['mainTab'] = i;
-          setState(() => _index = i);
-        },
-        backgroundColor: AppColors.bgSheet,
-        indicatorColor: AppColors.blue.withValues(alpha: 0.2),
-        surfaceTintColor: Colors.transparent,
-        destinations: [
-          NavigationDestination(
-            icon: const Icon(Icons.map_outlined, color: AppColors.textMuted),
-            selectedIcon:
-                const Icon(Icons.map_rounded, color: AppColors.blue),
-            label: AppStrings.t(lang, 'mapTab'),
-          ),
-          NavigationDestination(
-            icon: const Icon(Icons.star_outline_rounded,
-                color: AppColors.textMuted),
-            selectedIcon:
-                const Icon(Icons.star_rounded, color: AppColors.blue),
-            label: AppStrings.t(lang, 'savedTab'),
-          ),
-        ],
-        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+      // Colours come from the theme's NavigationBarThemeData; a hairline
+      // separates it from the map sheet, which shares the same surface.
+      bottomNavigationBar: DecoratedBox(
+        decoration: const BoxDecoration(
+          border: Border(top: BorderSide(color: AppPalette.divider)),
+        ),
+        child: NavigationBar(
+          selectedIndex: _index,
+          onDestinationSelected: (i) {
+            CrashRecovery.session['mainTab'] = i;
+            setState(() => _index = i);
+          },
+          destinations: [
+            NavigationDestination(
+              icon: const Icon(Icons.map_outlined),
+              selectedIcon: const Icon(Icons.map),
+              label: AppStrings.t(lang, 'mapTab'),
+            ),
+            NavigationDestination(
+              icon: const Icon(Icons.star_outline_rounded),
+              selectedIcon: const Icon(Icons.star_rounded),
+              label: AppStrings.t(lang, 'savedTab'),
+            ),
+          ],
+          labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+        ),
       ),
     );
   }

@@ -21,7 +21,7 @@ class AppStrings {
       AppLanguage.zh: '每 30 秒更新'
     },
     'arrivingSoonHeader': {
-      AppLanguage.en: 'ARRIVING SOON',
+      AppLanguage.en: 'Arriving soon',
       AppLanguage.zh: '即將抵達'
     },
     'noBusesArrivingSoon': {
@@ -40,8 +40,8 @@ class AppStrings {
 
     // ── Map screen ──────────────────────────────────────────────────────
     'searchLocationHint': {
-      AppLanguage.en: 'Search location…',
-      AppLanguage.zh: '搜尋地點…'
+      AppLanguage.en: 'Search for a place',
+      AppLanguage.zh: '搜尋地點'
     },
     'findingRoutes': {
       AppLanguage.en: 'Finding routes…',
@@ -226,6 +226,12 @@ class AppStrings {
       AppLanguage.en: 'Fastest, easiest & shortest route',
       AppLanguage.zh: '此路線最快、最方便也最短'
     },
+    'viewRoutes': {AppLanguage.en: 'Routes', AppLanguage.zh: '查看路線'},
+    'switchLanguage': {
+      AppLanguage.en: 'Switch to Chinese',
+      AppLanguage.zh: '切換為英文'
+    },
+    'myLocation': {AppLanguage.en: 'My location', AppLanguage.zh: '我的位置'},
     'tapForRecommended': {
       AppLanguage.en: 'Tap to see recommended routes',
       AppLanguage.zh: '點此查看推薦路線'
@@ -335,7 +341,7 @@ class AppStrings {
   static String resultsCount(AppLanguage lang, int count) {
     return lang == AppLanguage.zh
         ? '搜尋結果 · $count 條路線'
-        : 'RESULTS · $count ROUTE${count == 1 ? '' : 'S'}';
+        : 'Results · $count route${count == 1 ? '' : 's'}';
   }
 
   static String voiceFindingDirections(AppLanguage lang, String destination) {

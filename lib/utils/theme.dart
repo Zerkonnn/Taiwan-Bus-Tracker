@@ -1,48 +1,150 @@
-// App theme — mirrors src/utils/theme.ts
+﻿// App theme — mirrors src/utils/theme.ts
 
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'app_strings.dart';
+import '../design/tokens.dart';
 
 // ─── Colors ───────────────────────────────────────────────────────────────────
+// Legacy names kept so existing screens compile; they now point at the design
+// tokens (lib/design/tokens.dart). New code should use AppPalette directly.
 
 class AppColors {
-  static const bg = Color(0xFF0F1117);
-  static const bgCard = Color(0xFF1F2330);
-  static const bgSheet = Color(0xFF161920);
-  static const bgInput = Color(0xFF1F2330);
-  static const border = Color(0xFF2A2D36);
-  static const borderActive = Color(0xFF4A9EFF);
+  static const bg = AppPalette.canvas;
+  static const bgCard = AppPalette.surfaceRaised;
+  static const bgSheet = AppPalette.surface;
+  static const bgInput = AppPalette.surfaceRaised;
+  static const border = AppPalette.divider;
+  static const borderActive = AppPalette.accent;
 
-  static const blue = Color(0xFF4A9EFF);
-  static const green = Color(0xFF4ECB7A);
-  static const yellow = Color(0xFFF5C542);
-  static const red = Color(0xFFFF5C5C);
+  // One accent: the former blue and green both map to it.
+  static const blue = AppPalette.accent;
+  static const green = AppPalette.accent;
+  static const yellow = AppPalette.warning;
+  static const red = AppPalette.danger;
 
-  static const textPrimary = Color(0xFFE8EAF2);
-  static const textSecondary = Color(0xFFAAB0CC);
-  static const textMuted = Color(0xFF555A72);
+  static const textPrimary = AppPalette.textPrimary;
+  static const textSecondary = AppPalette.textSecondary;
+  static const textMuted = AppPalette.textTertiary;
 
   // Badge schemes: [bg, text]
-  static const badgeBlue = (bg: blue, text: Color(0xFF0A1628));
-  static const badgeGreen = (bg: green, text: Color(0xFF0A2015));
-  static const badgeRed = (bg: red, text: Color(0xFF2A0A0A));
-  static const badgeYellow = (bg: yellow, text: Color(0xFF2A1A00));
+  static const badgeBlue = (bg: AppPalette.accent, text: AppPalette.onAccent);
+  static const badgeGreen = (bg: AppPalette.accent, text: AppPalette.onAccent);
+  static const badgeRed = (bg: AppPalette.danger, text: Color(0xFF2A0A0A));
+  static const badgeYellow = (bg: AppPalette.warning, text: Color(0xFF2A1A00));
 }
 
 // ─── Theme ────────────────────────────────────────────────────────────────────
 
-ThemeData buildAppTheme() => ThemeData(
-      colorScheme: const ColorScheme.dark(
-        primary: AppColors.blue,
-        surface: AppColors.bgCard,
-        onPrimary: Color(0xFF0A1628),
-        onSurface: AppColors.textPrimary,
+ThemeData buildAppTheme() {
+  const scheme = ColorScheme.dark(
+    primary: AppPalette.accent,
+    onPrimary: AppPalette.onAccent,
+    secondary: AppPalette.accent,
+    onSecondary: AppPalette.onAccent,
+    surface: AppPalette.surface,
+    onSurface: AppPalette.textPrimary,
+    onSurfaceVariant: AppPalette.textSecondary,
+    surfaceContainerHighest: AppPalette.surfaceRaised,
+    outline: AppPalette.outline,
+    outlineVariant: AppPalette.divider,
+    error: AppPalette.danger,
+  );
+  return ThemeData(
+    useMaterial3: true,
+    colorScheme: scheme,
+    scaffoldBackgroundColor: AppPalette.canvas,
+    splashFactory: InkRipple.splashFactory,
+    dividerTheme: const DividerThemeData(
+        color: AppPalette.divider, thickness: 1, space: 1),
+    textTheme: const TextTheme(
+      titleLarge: AppText.title,
+      titleMedium: AppText.heading,
+      bodyLarge: AppText.body,
+      bodyMedium: AppText.body,
+      bodySmall: AppText.caption,
+      labelLarge: AppText.bodyStrong,
+      labelMedium: AppText.label,
+      labelSmall: AppText.micro,
+    ),
+    appBarTheme: const AppBarTheme(
+      backgroundColor: AppPalette.canvas,
+      foregroundColor: AppPalette.textPrimary,
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
+      titleTextStyle: AppText.title,
+    ),
+    navigationBarTheme: NavigationBarThemeData(
+      backgroundColor: AppPalette.surface,
+      surfaceTintColor: Colors.transparent,
+      indicatorColor: AppPalette.accentSoft,
+      height: 64,
+      elevation: 0,
+      labelTextStyle: WidgetStateProperty.resolveWith((states) =>
+          AppText.micro.copyWith(
+              color: states.contains(WidgetState.selected)
+                  ? AppPalette.textPrimary
+                  : AppPalette.textTertiary)),
+      iconTheme: WidgetStateProperty.resolveWith((states) => IconThemeData(
+          size: 22,
+          color: states.contains(WidgetState.selected)
+              ? AppPalette.accent
+              : AppPalette.textTertiary)),
+    ),
+    inputDecorationTheme: InputDecorationTheme(
+      filled: true,
+      fillColor: AppPalette.surfaceRaised,
+      hintStyle: AppText.body.copyWith(color: AppPalette.textTertiary),
+      contentPadding: const EdgeInsets.symmetric(
+          horizontal: AppSpace.md, vertical: AppSpace.md),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        borderSide: BorderSide.none,
       ),
-      scaffoldBackgroundColor: AppColors.bg,
-      useMaterial3: true,
-      fontFamily: 'sans-serif',
-    );
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        borderSide: const BorderSide(color: AppPalette.accent, width: 1.5),
+      ),
+    ),
+    bottomSheetTheme: const BottomSheetThemeData(
+      backgroundColor: AppPalette.surface,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(
+          borderRadius:
+              BorderRadius.vertical(top: Radius.circular(AppRadius.sheet))),
+    ),
+    snackBarTheme: SnackBarThemeData(
+      behavior: SnackBarBehavior.floating,
+      backgroundColor: AppPalette.surfaceRaised,
+      contentTextStyle: AppText.body,
+      shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.md)),
+    ),
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        backgroundColor: AppPalette.accent,
+        foregroundColor: AppPalette.onAccent,
+        minimumSize: const Size(0, 44),
+        textStyle: AppText.bodyStrong,
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadius.md)),
+      ),
+    ),
+    elevatedButtonTheme: ElevatedButtonThemeData(
+      style: ElevatedButton.styleFrom(
+        backgroundColor: AppPalette.accent,
+        foregroundColor: AppPalette.onAccent,
+        elevation: 0,
+        minimumSize: const Size(0, 44),
+        textStyle: AppText.bodyStrong,
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadius.md)),
+      ),
+    ),
+    progressIndicatorTheme:
+        const ProgressIndicatorThemeData(color: AppPalette.accent),
+  );
+}
 
 // ─── Formatters ───────────────────────────────────────────────────────────────
 
@@ -61,27 +163,18 @@ String formatEta(int seconds, AppLanguage lang) {
   return '${mins}m';
 }
 
-/// Color for ETA — green = arriving, blue = soon, yellow = later, grey = far
+/// Color for ETA — accent when the bus is close, neutral otherwise.
 Color etaColor(int seconds) {
-  if (seconds <= 60) return AppColors.green;
-  if (seconds <= 300) return AppColors.blue;
-  if (seconds <= 600) return AppColors.yellow;
-  return AppColors.textMuted;
+  if (seconds < 0) return AppPalette.textTertiary;
+  if (seconds <= 180) return AppPalette.accent;
+  if (seconds <= 600) return AppPalette.textPrimary;
+  return AppPalette.textSecondary;
 }
 
-/// Badge color scheme based on first char of route name (matches RN version)
-({Color bg, Color text}) routeBadgeColor(String routeName) {
-  if (routeName.isEmpty) {
-    return (bg: AppColors.blue, text: const Color(0xFF0A1628));
-  }
-  const schemes = [
-    (bg: AppColors.blue, text: Color(0xFF0A1628)),
-    (bg: AppColors.green, text: Color(0xFF0A2015)),
-    (bg: AppColors.red, text: Color(0xFF2A0A0A)),
-    (bg: AppColors.yellow, text: Color(0xFF2A1A00)),
-  ];
-  return schemes[routeName.codeUnitAt(0) % 4];
-}
+/// Route badge colours. Neutral for every route: the number is the content,
+/// colour is reserved for status (see RouteBadge in lib/design).
+({Color bg, Color text}) routeBadgeColor(String routeName) =>
+    (bg: AppPalette.surfaceRaised, text: AppPalette.textPrimary);
 
 // ─── Geo helpers ──────────────────────────────────────────────────────────────
 
@@ -103,18 +196,29 @@ double haversineDistance(
 }
 
 // ─── Google Maps dark style JSON ──────────────────────────────────────────────
+// Neutral charcoal base that matches the UI surfaces. Business POIs are hidden
+// so bus stops and routes are the most prominent things on the map.
 
 const String darkMapStyle = '''
 [
-  {"elementType":"geometry","stylers":[{"color":"#1a2335"}]},
-  {"elementType":"labels.text.fill","stylers":[{"color":"#8a9bb0"}]},
-  {"elementType":"labels.text.stroke","stylers":[{"color":"#1a2335"}]},
-  {"featureType":"road","elementType":"geometry","stylers":[{"color":"#243050"}]},
-  {"featureType":"road.highway","elementType":"geometry","stylers":[{"color":"#2d3c5a"}]},
-  {"featureType":"water","elementType":"geometry","stylers":[{"color":"#0e1a2b"}]},
-  {"featureType":"poi","elementType":"geometry","stylers":[{"color":"#1e2a40"}]},
-  {"featureType":"poi","elementType":"labels.text.fill","stylers":[{"color":"#6b7f9a"}]},
-  {"featureType":"transit","elementType":"geometry","stylers":[{"color":"#253555"}]},
-  {"featureType":"administrative","elementType":"geometry.stroke","stylers":[{"color":"#2d3c5a"}]}
+  {"elementType":"geometry","stylers":[{"color":"#17181a"}]},
+  {"elementType":"labels.icon","stylers":[{"saturation":-100},{"lightness":-25}]},
+  {"elementType":"labels.text.fill","stylers":[{"color":"#8d9097"}]},
+  {"elementType":"labels.text.stroke","stylers":[{"color":"#17181a"}]},
+  {"featureType":"administrative","elementType":"geometry.stroke","stylers":[{"color":"#3a3c42"}]},
+  {"featureType":"administrative.locality","elementType":"labels.text.fill","stylers":[{"color":"#b4b7bd"}]},
+  {"featureType":"poi","elementType":"geometry","stylers":[{"color":"#1b1c1e"}]},
+  {"featureType":"poi.business","stylers":[{"visibility":"off"}]},
+  {"featureType":"poi","elementType":"labels.text.fill","stylers":[{"color":"#6f727a"}]},
+  {"featureType":"poi.park","elementType":"geometry","stylers":[{"color":"#18201b"}]},
+  {"featureType":"road","elementType":"geometry","stylers":[{"color":"#2a2c30"}]},
+  {"featureType":"road","elementType":"geometry.stroke","stylers":[{"color":"#17181a"}]},
+  {"featureType":"road.arterial","elementType":"geometry","stylers":[{"color":"#34363c"}]},
+  {"featureType":"road.highway","elementType":"geometry","stylers":[{"color":"#3d4047"}]},
+  {"featureType":"road","elementType":"labels.text.fill","stylers":[{"color":"#8d9097"}]},
+  {"featureType":"transit.line","elementType":"geometry","stylers":[{"color":"#3a3c42"}]},
+  {"featureType":"transit.station","elementType":"labels.text.fill","stylers":[{"color":"#a4a7ae"}]},
+  {"featureType":"water","elementType":"geometry","stylers":[{"color":"#121a20"}]},
+  {"featureType":"water","elementType":"labels.text.fill","stylers":[{"color":"#4c5560"}]}
 ]
 ''';
