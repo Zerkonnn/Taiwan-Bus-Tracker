@@ -1,4 +1,4 @@
-﻿// RouteDetailScreen â€” stop list with live ETAs and direction toggle
+﻿// RouteDetailScreen — stop list with live ETAs and direction toggle
 // Mirrors src/screens/RouteDetailScreen.tsx
 
 import 'package:flutter/material.dart';
@@ -9,7 +9,7 @@ import '../utils/app_strings.dart';
 import '../utils/theme.dart';
 import '../widgets/bus_badge.dart';
 
-// Taichung city buses typically operate 06:00â€“23:00.
+// Taichung city buses typically operate 06:00–23:00.
 bool _outsideServiceHours() {
   final h = DateTime.now().hour;
   return h < 6 || h >= 23;
@@ -31,7 +31,7 @@ class RouteDetailScreen extends ConsumerStatefulWidget {
 }
 
 class _RouteDetailScreenState extends ConsumerState<RouteDetailScreen> {
-  int _direction = 0; // 0 = åŽ»ç¨‹, 1 = å›žç¨‹
+  int _direction = 0; // 0 = 去程, 1 = 回程
 
   @override
   Widget build(BuildContext context) {
@@ -50,7 +50,7 @@ class _RouteDetailScreenState extends ConsumerState<RouteDetailScreen> {
             .toList() ??
         [];
 
-    // stopUID â†’ earliest ETA for this direction
+    // stopUID → earliest ETA for this direction
     final arrivalMap = <String, int>{};
     final dirArrivals = arrivalsAsync.value
             ?.where((a) => a.direction == _direction)
@@ -68,7 +68,7 @@ class _RouteDetailScreenState extends ConsumerState<RouteDetailScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // â”€â”€ Header â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            // ── Header ────────────────────────────────────────────────────
             Padding(
               padding: const EdgeInsets.fromLTRB(4, 8, 16, 8),
               child: Row(
@@ -96,7 +96,7 @@ class _RouteDetailScreenState extends ConsumerState<RouteDetailScreen> {
               ),
             ),
 
-            // â”€â”€ Live bus count â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            // ── Live bus count ────────────────────────────────────────────
             Padding(
               padding:
                   const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -125,7 +125,7 @@ class _RouteDetailScreenState extends ConsumerState<RouteDetailScreen> {
               ),
             ),
 
-            // â”€â”€ Direction toggle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            // ── Direction toggle ──────────────────────────────────────────
             Padding(
               padding:
                   const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -152,7 +152,7 @@ class _RouteDetailScreenState extends ConsumerState<RouteDetailScreen> {
               ),
             ),
 
-            // â”€â”€ Service hours warning â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            // ── Service hours warning ─────────────────────────────────────
             if (_outsideServiceHours() &&
                 (positionsAsync.value?.isEmpty ?? true))
               Container(
@@ -179,7 +179,7 @@ class _RouteDetailScreenState extends ConsumerState<RouteDetailScreen> {
                 ]),
               ),
 
-            // â”€â”€ Stop list â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            // ── Stop list ─────────────────────────────────────────────────
             Expanded(
               child: stopsAsync.when(
                 loading: () => const Center(
@@ -371,7 +371,7 @@ class _StopRow extends StatelessWidget {
                                   color: etaColor(eta!), fontSize: 12),
                             )
                           else
-                            const Text('â€”',
+                            const Text('—',
                                 style: TextStyle(
                                     color: AppColors.textMuted,
                                     fontSize: 12)),

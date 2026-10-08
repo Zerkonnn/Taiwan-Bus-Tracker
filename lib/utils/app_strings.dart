@@ -1,4 +1,4 @@
-// App-wide translation strings — Traditional Chinese / English toggle.
+﻿// App-wide translation strings — Traditional Chinese / English toggle.
 // Flat key → {zh, en} lookup, plus small template helpers for compound
 // strings (mins remaining, walk hints, etc.) that can't be a static map entry.
 
@@ -218,6 +218,23 @@ class AppStrings {
     'mapTab': {AppLanguage.en: 'Map', AppLanguage.zh: '地圖'},
     'savedTab': {AppLanguage.en: 'Saved', AppLanguage.zh: '收藏'},
 
+    // ── Route options (fastest / shortest) ─────────────────────────────
+    'fastestRoute': {AppLanguage.en: 'Fastest', AppLanguage.zh: '最快'},
+    'shortestRoute': {AppLanguage.en: 'Shortest', AppLanguage.zh: '最短'},
+    'easiestRoute': {AppLanguage.en: 'Easiest', AppLanguage.zh: '最方便'},
+    'bestAllRound': {
+      AppLanguage.en: 'Fastest, easiest & shortest route',
+      AppLanguage.zh: '此路線最快、最方便也最短'
+    },
+    'tapForRecommended': {
+      AppLanguage.en: 'Tap to see recommended routes',
+      AppLanguage.zh: '點此查看推薦路線'
+    },
+    'restoredAfterCrash': {
+      AppLanguage.en: 'Something went wrong — restored where you left off',
+      AppLanguage.zh: '發生錯誤，已為您恢復先前的畫面'
+    },
+
     // ── formatEta ───────────────────────────────────────────────────────
     'notDeparted': {AppLanguage.en: 'Not departed', AppLanguage.zh: '尚未發車'},
   };
@@ -281,6 +298,44 @@ class AppStrings {
     return lang == AppLanguage.zh
         ? '正在開啟 $routeName 路線'
         : 'Opening route $routeName';
+  }
+
+  static String frequentTripLabel(AppLanguage lang, int days) {
+    return lang == AppLanguage.zh ? '常用路線 · $days 天' : 'Usual trip · $days days';
+  }
+
+  static String usualTripBanner(AppLanguage lang, String destination) {
+    return lang == AppLanguage.zh
+        ? '常用路線：往 $destination'
+        : 'Usual trip: to $destination';
+  }
+
+  // Number of bus changes on a route; 0 = no change needed.
+  static String transfersLabel(AppLanguage lang, int transfers) {
+    if (transfers == 0) return lang == AppLanguage.zh ? '直達' : 'Direct';
+    return lang == AppLanguage.zh
+        ? '轉乘 $transfers 次'
+        : '$transfers transfer${transfers == 1 ? '' : 's'}';
+  }
+
+  static String walkLabel(AppLanguage lang, int meters) {
+    final dist = meters < 1000
+        ? (lang == AppLanguage.zh ? '$meters 公尺' : '$meters m')
+        : (lang == AppLanguage.zh
+            ? '${(meters / 1000).toStringAsFixed(1)} 公里'
+            : '${(meters / 1000).toStringAsFixed(1)} km');
+    return lang == AppLanguage.zh ? '步行 $dist' : '$dist walk';
+  }
+
+  static String nearbyStopsCount(AppLanguage lang, int count, int radius) {
+    if (lang == AppLanguage.zh) return '附近 $radius 公尺內有 $count 個公車站';
+    return '$count bus stop${count == 1 ? '' : 's'} within $radius m';
+  }
+
+  static String resultsCount(AppLanguage lang, int count) {
+    return lang == AppLanguage.zh
+        ? '搜尋結果 · $count 條路線'
+        : 'RESULTS · $count ROUTE${count == 1 ? '' : 'S'}';
   }
 
   static String voiceFindingDirections(AppLanguage lang, String destination) {

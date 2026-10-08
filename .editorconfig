@@ -1,0 +1,9 @@
+# Always save source files as UTF-8 so Chinese text isn't garbled
+# (an editor saving in a Windows code page once scrambled every string).
+root = true
+
+[*]
+charset = utf-8
+indent_style = space
+indent_size = 2
+insert_final_newline = true

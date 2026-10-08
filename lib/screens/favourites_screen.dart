@@ -1,4 +1,4 @@
-﻿// FavouritesScreen â€” saved routes (persisted to SharedPreferences)
+﻿// FavouritesScreen — saved routes (persisted to SharedPreferences)
 // Mirrors src/screens/FavouritesScreen.tsx
 
 import 'package:flutter/material.dart';

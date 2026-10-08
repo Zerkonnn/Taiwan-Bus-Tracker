@@ -1,4 +1,4 @@
-﻿// EtaTag â€” arrival countdown chip
+﻿// EtaTag — arrival countdown chip
 // Mirrors src/components/EtaTag.tsx
 
 import 'package:flutter/material.dart';

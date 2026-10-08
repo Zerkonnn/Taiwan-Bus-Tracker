@@ -1,9 +1,10 @@
-﻿// MapScreen â€” Google Maps + TDX Taichung Bus API
+﻿// MapScreen — Google Maps + TDX Taichung Bus API
 // Google Maps handles the interactive map; TDX provides accurate live bus
 // positions, ETAs, route stop positions (for polylines), and nearby stops.
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -14,16 +15,19 @@ import 'package:flutter_tts/flutter_tts.dart';
 import '../models/bus_models.dart';
 import '../providers/bus_providers.dart';
 import '../services/ptx_api.dart';
+import '../services/trip_history.dart';
 import '../utils/app_strings.dart';
+import '../utils/crash_recovery.dart';
 import '../utils/theme.dart';
+import '../widgets/nearby_stop_chip.dart';
 
 const _defaultCenter = LatLng(24.1477, 120.6736);
 
-// Same key used for Maps SDK in AndroidManifest.xml â€” must also have
+// Same key used for Maps SDK in AndroidManifest.xml — must also have
 // Directions API enabled in Google Cloud Console for this project.
 const _googleMapsApiKey = 'AIzaSyDUPCYVGg1mKjrkzbBtSsaopGXbY8SDj18';
 
-// â”€â”€â”€ Popular Taiwan locations (instant search fallback) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Popular Taiwan locations (instant search fallback) ───────────────────────
 
 class _LocationResult {
   final String shortName;    // Chinese name (or Nominatim result)
@@ -31,6 +35,8 @@ class _LocationResult {
   final String displayName;
   final double lat;
   final double lon;
+  // > 0 when this is a remembered trip the user has made on that many days.
+  final int tripDays;
 
   const _LocationResult({
     required this.shortName,
@@ -38,6 +44,7 @@ class _LocationResult {
     required this.displayName,
     required this.lat,
     required this.lon,
+    this.tripDays = 0,
   });
 
   factory _LocationResult.fromNominatim(Map<String, dynamic> json) {
@@ -52,56 +59,90 @@ class _LocationResult {
   }
 }
 
+// One bus itinerary returned by the Directions API (may include transfers).
+class _TransitOption {
+  final String eta;
+  final String dist;
+  final int durationSecs;
+  final int distanceMeters;
+  final int transfers; // bus changes: 0 = one bus all the way
+  final int walkMeters; // total walking along the itinerary
+  final List<LatLng> points;
+  final List<String> busLines;
+
+  const _TransitOption({
+    required this.eta,
+    required this.dist,
+    required this.durationSecs,
+    required this.distanceMeters,
+    required this.transfers,
+    required this.walkMeters,
+    required this.points,
+    required this.busLines,
+  });
+}
+
+// A route option shown to the user, with every reason it was picked —
+// one itinerary can be e.g. both the fastest and the easiest.
+class _RouteChoice {
+  final List<String> kinds; // 'fastest' | 'easiest' | 'shortest'
+  final _TransitOption option;
+  _RouteChoice(this.kinds, this.option);
+}
+
+// Radius (m) used for "bus stops near you" — matches getNearbyStops' default.
+const _nearbyRadius = 500;
+
 const _popularLocations = [
-  _LocationResult(shortName: 'é€¢ç”²å¤§å­¸', shortNameEn: 'Feng Chia University', displayName: 'å°ä¸­å¸‚è¥¿å±¯å€é€¢ç”²å¤§å­¸', lat: 24.1800, lon: 120.6445),
-  _LocationResult(shortName: 'å°ä¸­ç«è»Šç«™', shortNameEn: 'Taichung Train Station', displayName: 'å°ä¸­å¸‚ä¸­å€å°ä¸­ç«è»Šç«™', lat: 24.1369, lon: 120.6852),
-  _LocationResult(shortName: 'å°ä¸­å¸‚æ”¿åºœ', shortNameEn: 'Taichung City Hall', displayName: 'å°ä¸­å¸‚è¥¿å±¯å€å¸‚æ”¿åŒ—äºŒè·¯', lat: 24.1634, lon: 120.6469),
-  _LocationResult(shortName: 'åœ‹ç«‹ä¸­èˆˆå¤§å­¸', shortNameEn: 'Nat\'l Chung Hsing University (NCHU)', displayName: 'å°ä¸­å¸‚å—å€èˆˆå¤§è·¯145è™Ÿ', lat: 24.1170, lon: 120.6752),
-  _LocationResult(shortName: 'å°ä¸­æ¦®ç¸½', shortNameEn: 'Taichung Veterans General Hospital', displayName: 'å°ä¸­å¸‚è¥¿å±¯å€å°ç£å¤§é“å››æ®µ1650è™Ÿ', lat: 24.1731, lon: 120.6362),
-  _LocationResult(shortName: 'æœé¦¬è½‰é‹ç«™', shortNameEn: 'Chaoma Bus Terminal', displayName: 'å°ä¸­å¸‚è¥¿å±¯å€æœé¦¬ä¸‰è·¯', lat: 24.1548, lon: 120.6245),
-  _LocationResult(shortName: 'é«˜éµå°ä¸­ç«™', shortNameEn: 'Taichung HSR Station', displayName: 'å°ä¸­å¸‚çƒæ—¥å€ç«™å€äºŒè·¯', lat: 24.0626, lon: 120.6854),
-  _LocationResult(shortName: 'å°ä¸­æ©Ÿå ´', shortNameEn: 'Taichung Airport', displayName: 'å°ä¸­å¸‚æ¸…æ°´å€éŽ®å—è·¯', lat: 24.2641, lon: 120.6208),
-  _LocationResult(shortName: 'ä¸€ä¸­å•†åœˆ', shortNameEn: 'First High School Shopping Area', displayName: 'å°ä¸­å¸‚åŒ—å€è‚²æ‰è¡—ä¸€å¸¶', lat: 24.1534, lon: 120.6869),
-  _LocationResult(shortName: 'ä¸­å‹ç™¾è²¨', shortNameEn: 'Chung Yu Department Store', displayName: 'å°ä¸­å¸‚ä¸­å€ä¸‰æ°‘è·¯ä¸‰æ®µ', lat: 24.1456, lon: 120.6819),
-  _LocationResult(shortName: 'å°ä¸­åœ‹å®¶æ­ŒåŠ‡é™¢', shortNameEn: 'National Taichung Theater', displayName: 'å°ä¸­å¸‚è¥¿å±¯å€æƒ ä¾†è·¯äºŒæ®µ101è™Ÿ', lat: 24.1630, lon: 120.6447),
-  _LocationResult(shortName: 'æ–°å…‰ä¸‰è¶Šå°ä¸­ä¸­æ¸¯', shortNameEn: 'Shin Kong Mitsukoshi Taichung', displayName: 'å°ä¸­å¸‚è¥¿å±¯å€å°ç£å¤§é“ä¸‰æ®µ301è™Ÿ', lat: 24.1634, lon: 120.6469),
-  _LocationResult(shortName: 'å¤§é‡Œå¸‚å€', shortNameEn: 'Dali District', displayName: 'å°ä¸­å¸‚å¤§é‡Œå€', lat: 24.0999, lon: 120.6784),
-  _LocationResult(shortName: 'è±åŽŸç«è»Šç«™', shortNameEn: 'Fengyuan Train Station', displayName: 'å°ä¸­å¸‚è±åŽŸå€åœ“ç’°å—è·¯', lat: 24.2519, lon: 120.7188),
-  _LocationResult(shortName: 'æ±æµ·å¤§å­¸', shortNameEn: 'Tunghai University', displayName: 'å°ä¸­å¸‚é¾äº•å€å°ç£å¤§é“å››æ®µ1727è™Ÿ', lat: 24.1792, lon: 120.5993),
+  _LocationResult(shortName: '逢甲大學', shortNameEn: 'Feng Chia University', displayName: '台中市西屯區逢甲大學', lat: 24.1800, lon: 120.6445),
+  _LocationResult(shortName: '台中火車站', shortNameEn: 'Taichung Train Station', displayName: '台中市中區台中火車站', lat: 24.1369, lon: 120.6852),
+  _LocationResult(shortName: '台中市政府', shortNameEn: 'Taichung City Hall', displayName: '台中市西屯區市政北二路', lat: 24.1634, lon: 120.6469),
+  _LocationResult(shortName: '國立中興大學', shortNameEn: 'Nat\'l Chung Hsing University (NCHU)', displayName: '台中市南區興大路145號', lat: 24.1170, lon: 120.6752),
+  _LocationResult(shortName: '台中榮總', shortNameEn: 'Taichung Veterans General Hospital', displayName: '台中市西屯區台灣大道四段1650號', lat: 24.1731, lon: 120.6362),
+  _LocationResult(shortName: '朝馬轉運站', shortNameEn: 'Chaoma Bus Terminal', displayName: '台中市西屯區朝馬三路', lat: 24.1548, lon: 120.6245),
+  _LocationResult(shortName: '高鐵台中站', shortNameEn: 'Taichung HSR Station', displayName: '台中市烏日區站區二路', lat: 24.0626, lon: 120.6854),
+  _LocationResult(shortName: '台中機場', shortNameEn: 'Taichung Airport', displayName: '台中市清水區鎮南路', lat: 24.2641, lon: 120.6208),
+  _LocationResult(shortName: '一中商圈', shortNameEn: 'First High School Shopping Area', displayName: '台中市北區育才街一帶', lat: 24.1534, lon: 120.6869),
+  _LocationResult(shortName: '中友百貨', shortNameEn: 'Chung Yu Department Store', displayName: '台中市中區三民路三段', lat: 24.1456, lon: 120.6819),
+  _LocationResult(shortName: '台中國家歌劇院', shortNameEn: 'National Taichung Theater', displayName: '台中市西屯區惠來路二段101號', lat: 24.1630, lon: 120.6447),
+  _LocationResult(shortName: '新光三越台中中港', shortNameEn: 'Shin Kong Mitsukoshi Taichung', displayName: '台中市西屯區台灣大道三段301號', lat: 24.1634, lon: 120.6469),
+  _LocationResult(shortName: '大里市區', shortNameEn: 'Dali District', displayName: '台中市大里區', lat: 24.0999, lon: 120.6784),
+  _LocationResult(shortName: '豐原火車站', shortNameEn: 'Fengyuan Train Station', displayName: '台中市豐原區圓環南路', lat: 24.2519, lon: 120.7188),
+  _LocationResult(shortName: '東海大學', shortNameEn: 'Tunghai University', displayName: '台中市龍井區台灣大道四段1727號', lat: 24.1792, lon: 120.5993),
 ];
 
 const _aliases = <String, String>{
-  // Feng Chia University â€” covers romanised, phonetic Mandarin, and abbreviation
-  'fengchia': 'é€¢ç”²å¤§å­¸', 'feng chia': 'é€¢ç”²å¤§å­¸', 'fengjia': 'é€¢ç”²å¤§å­¸',
-  'feng jia': 'é€¢ç”²å¤§å­¸', 'fcu': 'é€¢ç”²å¤§å­¸', 'feng chia university': 'é€¢ç”²å¤§å­¸',
+  // Feng Chia University — covers romanised, phonetic Mandarin, and abbreviation
+  'fengchia': '逢甲大學', 'feng chia': '逢甲大學', 'fengjia': '逢甲大學',
+  'feng jia': '逢甲大學', 'fcu': '逢甲大學', 'feng chia university': '逢甲大學',
 
   // Taichung Train Station
-  'taichung station': 'å°ä¸­ç«è»Šç«™', 'train station': 'å°ä¸­ç«è»Šç«™',
-  'taichung railway': 'å°ä¸­ç«è»Šç«™', 'taichung train': 'å°ä¸­ç«è»Šç«™',
-  'huo che zhan': 'å°ä¸­ç«è»Šç«™',
+  'taichung station': '台中火車站', 'train station': '台中火車站',
+  'taichung railway': '台中火車站', 'taichung train': '台中火車站',
+  'huo che zhan': '台中火車站',
 
   // City Hall
-  'city hall': 'å°ä¸­å¸‚æ”¿åºœ', 'taichung city hall': 'å°ä¸­å¸‚æ”¿åºœ',
+  'city hall': '台中市政府', 'taichung city hall': '台中市政府',
 
-  // NCHU â€” covers full English name and common abbreviations
-  'nchu': 'åœ‹ç«‹ä¸­èˆˆå¤§å­¸', 'chung hsing': 'åœ‹ç«‹ä¸­èˆˆå¤§å­¸',
-  'national chung hsing': 'åœ‹ç«‹ä¸­èˆˆå¤§å­¸',
-  'chung hsing university': 'åœ‹ç«‹ä¸­èˆˆå¤§å­¸',
-  'zhong xing': 'åœ‹ç«‹ä¸­èˆˆå¤§å­¸', 'zhongxing': 'åœ‹ç«‹ä¸­èˆˆå¤§å­¸',
+  // NCHU — covers full English name and common abbreviations
+  'nchu': '國立中興大學', 'chung hsing': '國立中興大學',
+  'national chung hsing': '國立中興大學',
+  'chung hsing university': '國立中興大學',
+  'zhong xing': '國立中興大學', 'zhongxing': '國立中興大學',
 
   // THSR
-  'thsr': 'é«˜éµå°ä¸­ç«™', 'hsr': 'é«˜éµå°ä¸­ç«™', 'high speed': 'é«˜éµå°ä¸­ç«™',
-  'taichung hsr': 'é«˜éµå°ä¸­ç«™', 'gaotie': 'é«˜éµå°ä¸­ç«™',
+  'thsr': '高鐵台中站', 'hsr': '高鐵台中站', 'high speed': '高鐵台中站',
+  'taichung hsr': '高鐵台中站', 'gaotie': '高鐵台中站',
 
   // Tunghai University
-  'tunghai': 'æ±æµ·å¤§å­¸', 'dong hai': 'æ±æµ·å¤§å­¸',
-  'tunghai university': 'æ±æµ·å¤§å­¸', 'thu': 'æ±æµ·å¤§å­¸',
+  'tunghai': '東海大學', 'dong hai': '東海大學',
+  'tunghai university': '東海大學', 'thu': '東海大學',
 
   // Airport
-  'airport': 'å°ä¸­æ©Ÿå ´', 'taichung airport': 'å°ä¸­æ©Ÿå ´',
+  'airport': '台中機場', 'taichung airport': '台中機場',
 
   // Veterans General Hospital
-  'veterans': 'å°ä¸­æ¦®ç¸½', 'taichung veterans': 'å°ä¸­æ¦®ç¸½', 'vghtc': 'å°ä¸­æ¦®ç¸½',
+  'veterans': '台中榮總', 'taichung veterans': '台中榮總', 'vghtc': '台中榮總',
 };
 
 List<_LocationResult> _filterPopular(String query) {
@@ -148,9 +189,9 @@ Future<List<_LocationResult>> _nominatimSearch(String query, LatLng origin) asyn
     }
   }
 
-  // Try progressively: Chinese name in Taiwan â†’ original query in Taiwan â†’ original query
+  // Try progressively: Chinese name in Taiwan → original query in Taiwan → original query
   final queries = [
-    if (searchQuery != q) '$searchQuery å°ä¸­',
+    if (searchQuery != q) '$searchQuery 台中',
     '$searchQuery Taiwan',
     '$q Taiwan',
     q,
@@ -174,7 +215,7 @@ Future<List<_LocationResult>> _nominatimSearch(String query, LatLng origin) asyn
           .timeout(const Duration(seconds: 8));
 
       if (response.statusCode != 200) continue;
-      final List<dynamic> data = jsonDecode(response.body) as List<dynamic>;
+      final List<dynamic> data = jsonDecode(utf8.decode(response.bodyBytes)) as List<dynamic>;
       if (data.isNotEmpty) {
         // Prefer amenity/education results over roads or postcodes
         final sorted = List<Map<String, dynamic>>.from(
@@ -184,7 +225,7 @@ Future<List<_LocationResult>> _nominatimSearch(String query, LatLng origin) asyn
             final aScore = preferred.contains(a['class']) ? 0 : 1;
             final bScore = preferred.contains(b['class']) ? 0 : 1;
             if (aScore != bScore) return aScore.compareTo(bScore);
-            // Same class tier â€” prefer whichever branch is closer to the user,
+            // Same class tier — prefer whichever branch is closer to the user,
             // since chain results (e.g. a department store) return every
             // branch nationwide and Nominatim's default order favours the
             // most "important" one (often Taipei) over the nearest one.
@@ -220,7 +261,7 @@ Future<List<_LocationResult>> _nominatimSearch(String query, LatLng origin) asyn
   return _filterPopular(q);
 }
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 
 class MapScreen extends ConsumerStatefulWidget {
   const MapScreen({super.key});
@@ -266,16 +307,28 @@ class _MapScreenState extends ConsumerState<MapScreen>
   List<String> _busLines = [];
   String? _walkHint;
 
-  // â”€â”€â”€ Sheet / route-detail state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Bus route options for the current destination. From all itineraries
+  // Google returns we pick the fastest (least time), the easiest (fewest
+  // transfers, then least walking) and the shortest (least distance).
+  // Several can be the same itinerary, so they are merged into choices.
+  List<_RouteChoice> _routeChoices = [];
+  int _selectedChoice = 0;
+
+  // Trips the user has made on 2+ days from around here — suggested first,
+  // and the top one is offered automatically in a banner.
+  List<_LocationResult> _frequentTrips = [];
+  bool _usualTripDismissed = false;
+
+  // ─── Sheet / route-detail state ───────────────────────────────────────────
   final _sheetController = DraggableScrollableController();
   final _busSearchController = TextEditingController();
   String _busSearchQuery = '';
   int _sheetTab = 0; // 0 = nearby, 1 = search
   bool _inRouteDetail = false;
-  int? _selectedDirection; // 0 = outbound åŽ»ç¨‹, 1 = inbound å›žç¨‹
-  String? _userStopUID; // stop the user tapped from â€” highlighted in route detail
+  int? _selectedDirection; // 0 = outbound 去程, 1 = inbound 回程
+  String? _userStopUID; // stop the user tapped from — highlighted in route detail
 
-  // Current fractional height (0..1) of the draggable sheet â€” used to keep
+  // Current fractional height (0..1) of the draggable sheet — used to keep
   // GoogleMap's own bounds from extending underneath it. On Android, the
   // GoogleMap platform view greedily wins the gesture arena for any touch
   // that lands within its widget bounds (flutter/flutter#59433), so taps on
@@ -288,14 +341,26 @@ class _MapScreenState extends ConsumerState<MapScreen>
   // current language without calling ref.watch outside of build().
   AppLanguage _lang = AppLanguage.zh;
 
+  // Small dot icon for route stop markers (the default Google pin is too big
+  // when a route has dozens of stops). Null until generated.
+  BitmapDescriptor? _stopDotIcon;
+  BitmapDescriptor? _nearbyDotIcon; // green dot for stops around the user
+
   @override
   void initState() {
     super.initState();
-    _requestLocation();
+    final locationReady = _requestLocation();
+    _restoreSession(locationReady);
+    _createStopDotIcon(14).then((icon) {
+      if (mounted) setState(() => _stopDotIcon = icon);
+    });
+    _createStopDotIcon(12, color: AppColors.green).then((icon) {
+      if (mounted) setState(() => _nearbyDotIcon = icon);
+    });
     _searchFocus.addListener(() {
       if (_searchFocus.hasFocus && _searchController.text.isEmpty) {
         setState(() {
-          _suggestions = _popularLocations.take(5).toList();
+          _suggestions = _defaultSuggestions();
           _showSuggestions = true;
         });
       }
@@ -307,6 +372,76 @@ class _MapScreenState extends ConsumerState<MapScreen>
     });
     _sheetController.addListener(_onSheetExtentChanged);
     _initSpeech();
+    _loadFrequentTrips();
+  }
+
+  // ─── Crash recovery: remember / restore what the user is doing ───────────
+
+  // Called every build so the snapshot is always current if a crash happens.
+  void _saveSession() {
+    final dest = _selectedDestination;
+    CrashRecovery.session
+      ..['dest'] = dest == null
+          ? null
+          : {
+              'name': dest.shortName,
+              'nameEn': dest.shortNameEn,
+              'displayName': dest.displayName,
+              'lat': dest.lat,
+              'lon': dest.lon,
+            }
+      ..['route'] = _inRouteDetail && _selectedRoute != null
+          ? {
+              'name': _selectedRoute,
+              'dir': _selectedDirection ?? 0,
+              'userStop': _userStopUID,
+            }
+          : null
+      ..['sheetTab'] = _sheetTab
+      ..['busQuery'] = _busSearchQuery;
+  }
+
+  // After an automatic crash restart, put the user back where they were:
+  // same sheet tab and bus search, same open route, same destination.
+  void _restoreSession(Future<void> locationReady) {
+    final dest = CrashRecovery.takeRestored('dest') as Map<String, Object?>?;
+    final route = CrashRecovery.takeRestored('route') as Map<String, Object?>?;
+    final tab = CrashRecovery.takeRestored('sheetTab') as int?;
+    final query = CrashRecovery.takeRestored('busQuery') as String?;
+    if (dest == null && route == null && tab == null && query == null) return;
+
+    if (tab != null) _sheetTab = tab;
+    if (query != null && query.isNotEmpty) {
+      _busSearchQuery = query;
+      _busSearchController.text = query;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (route != null) {
+        _enterRouteDetail(route['name'] as String, route['dir'] as int,
+            userStopUID: route['userStop'] as String?);
+      }
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(
+        content: Text(AppStrings.t(_lang, 'restoredAfterCrash')),
+        duration: const Duration(seconds: 3),
+      ));
+    });
+    if (dest != null) {
+      // Wait for GPS so directions start from the user's real position
+      locationReady.whenComplete(() {
+        if (!mounted) return;
+        _selectSuggestion(
+          _LocationResult(
+            shortName: dest['name'] as String,
+            shortNameEn: dest['nameEn'] as String,
+            displayName: dest['displayName'] as String,
+            lat: dest['lat'] as double,
+            lon: dest['lon'] as double,
+          ),
+          record: false,
+        );
+      });
+    }
   }
 
   Future<void> _initSpeech() async {
@@ -462,6 +597,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
         final loc = LatLng(pos.latitude, pos.longitude);
         setState(() => _userLocation = loc);
         _mapController?.animateCamera(CameraUpdate.newLatLngZoom(loc, 14));
+        _loadFrequentTrips();
       }
     } catch (_) {}
   }
@@ -472,7 +608,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
 
     if (q.isEmpty) {
       setState(() {
-        _suggestions = _popularLocations.take(5).toList();
+        _suggestions = _defaultSuggestions();
         _showSuggestions = true;
         _loadingSuggestions = false;
       });
@@ -500,7 +636,37 @@ class _MapScreenState extends ConsumerState<MapScreen>
     });
   }
 
-  void _selectSuggestion(_LocationResult result) {
+  // Remembered frequent trips first, then popular places (no duplicates).
+  List<_LocationResult> _defaultSuggestions() {
+    final popular = _popularLocations.where((p) => !_frequentTrips.any((t) =>
+        haversineDistance(t.lat, t.lon, p.lat, p.lon) < 200));
+    return [..._frequentTrips.take(3), ...popular].take(6).toList();
+  }
+
+  Future<void> _loadFrequentTrips() async {
+    final origin = _userLocation;
+    final trips = await TripHistory.instance.frequentTrips(
+        originLat: origin?.latitude, originLon: origin?.longitude);
+    if (!mounted) return;
+    setState(() {
+      _frequentTrips = trips
+          .map((t) => _LocationResult(
+                shortName: t.name,
+                shortNameEn: t.nameEn,
+                displayName: t.displayName,
+                lat: t.lat,
+                lon: t.lon,
+                tripDays: t.dayCount,
+              ))
+          .toList();
+      // Refresh the open suggestion list if it is showing the defaults
+      if (_showSuggestions && _searchController.text.isEmpty) {
+        _suggestions = _defaultSuggestions();
+      }
+    });
+  }
+
+  void _selectSuggestion(_LocationResult result, {bool record = true}) {
     _searchController.text = result.shortName;
     _debounce?.cancel();
     _searchFocus.unfocus();
@@ -519,20 +685,33 @@ class _MapScreenState extends ConsumerState<MapScreen>
       CameraUpdate.newLatLngZoom(LatLng(result.lat, result.lon), 15),
     );
     _fetchDirections(result);
+    if (!record) return;
+    TripHistory.instance
+        .record(
+          name: result.shortName,
+          nameEn: result.shortNameEn,
+          displayName: result.displayName,
+          lat: result.lat,
+          lon: result.lon,
+          originLat: _userLocation?.latitude,
+          originLon: _userLocation?.longitude,
+        )
+        .then((_) => _loadFrequentTrips())
+        .catchError((_) {});
   }
 
   void _clearSearch() {
     _debounce?.cancel();
     _searchController.clear();
     setState(() {
-      _suggestions = _popularLocations.take(5).toList();
+      _suggestions = _defaultSuggestions();
       _showSuggestions = false;
       _loadingSuggestions = false;
     });
     _clearDirections();
   }
 
-  // â”€â”€â”€ Route detail â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─── Route detail ─────────────────────────────────────────────────────────
 
   void _toggleSheet() {
     const snaps = [0.10, 0.38, 0.72];
@@ -549,9 +728,13 @@ class _MapScreenState extends ConsumerState<MapScreen>
     );
   }
 
-  void _enterRouteDetail(String routeID, int direction, {String? userStopUID}) {
+  // [routeName] is the public route number (e.g. "351"), which the TDX
+  // endpoints are keyed on — NOT RouteID, which differs for some routes
+  // (351 → "3510", 352延 → "3521").
+  void _enterRouteDetail(String routeName, int direction,
+      {String? userStopUID}) {
     setState(() {
-      _selectedRoute = routeID;
+      _selectedRoute = routeName;
       _selectedDirection = direction;
       _inRouteDetail = true;
       _userStopUID = userStopUID;
@@ -569,7 +752,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
     });
   }
 
-  // â”€â”€â”€ Directions API â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─── Directions API ───────────────────────────────────────────────────────
 
   void _clearDirections() {
     setState(() {
@@ -581,13 +764,15 @@ class _MapScreenState extends ConsumerState<MapScreen>
       _transportMode = null;
       _busLines = [];
       _walkHint = null;
+      _routeChoices = [];
+      _selectedChoice = 0;
     });
   }
 
-  // Shared helper â€” tries Google transit (bus) from [from] to [to].
-  // Returns parsed result or null on failure/no route.
-  Future<({String eta, String dist, List<LatLng> points, List<String> busLines})?> _tryTransit(
-    LatLng from, LatLng to) async {
+  // Shared helper — asks Google for bus (transit) itineraries from [from] to
+  // [to], including alternatives with transfers. Returns an empty list on
+  // failure / no route.
+  Future<List<_TransitOption>> _tryTransit(LatLng from, LatLng to) async {
     try {
       final uri = Uri.parse(
         'https://maps.googleapis.com/maps/api/directions/json',
@@ -596,40 +781,123 @@ class _MapScreenState extends ConsumerState<MapScreen>
         'destination': '${to.latitude},${to.longitude}',
         'mode': 'transit',
         'transit_mode': 'bus',
+        'alternatives': 'true',
         'language': 'zh-TW',
         'key': _googleMapsApiKey,
       });
       final response = await http.get(uri).timeout(const Duration(seconds: 10));
-      if (response.statusCode != 200) return null;
-      final data = jsonDecode(response.body) as Map<String, dynamic>;
-      if (data['status'] != 'OK') return null;
-      final routes = data['routes'] as List<dynamic>;
-      if (routes.isEmpty) return null;
-      final leg = ((routes[0] as Map)['legs'] as List<dynamic>)[0]
-          as Map<String, dynamic>;
-      final eta = (leg['duration'] as Map)['text'] as String;
-      final dist = (leg['distance'] as Map)['text'] as String;
-      final points = _extractDetailedPolyline(leg);
-      // Extract bus line numbers
-      final busLines = <String>[];
-      for (final step in leg['steps'] as List<dynamic>) {
-        final s = step as Map<String, dynamic>;
-        if (s['travel_mode'] == 'TRANSIT') {
-          final td = s['transit_details'] as Map<String, dynamic>?;
-          final line = td?['line'] as Map<String, dynamic>?;
-          if (line != null) {
-            final type = (line['vehicle'] as Map<String, dynamic>?)?['type'] as String?;
-            if (type == null || type == 'BUS') {
-              final name = (line['short_name'] ?? line['name']) as String?;
-              if (name != null && !busLines.contains(name)) busLines.add(name);
+      if (response.statusCode != 200) return [];
+      final data = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+      if (data['status'] != 'OK') return [];
+      final options = <_TransitOption>[];
+      for (final route in data['routes'] as List<dynamic>) {
+        try {
+          final leg = ((route as Map)['legs'] as List<dynamic>)[0]
+              as Map<String, dynamic>;
+          final duration = leg['duration'] as Map<String, dynamic>;
+          final distance = leg['distance'] as Map<String, dynamic>;
+          // Extract bus line numbers (in riding order), rides and walking
+          final busLines = <String>[];
+          int rides = 0;
+          int walkMeters = 0;
+          for (final step in leg['steps'] as List<dynamic>) {
+            final s = step as Map<String, dynamic>;
+            if (s['travel_mode'] == 'WALKING') {
+              walkMeters +=
+                  ((s['distance'] as Map?)?['value'] as num?)?.toInt() ?? 0;
+            }
+            if (s['travel_mode'] == 'TRANSIT') {
+              rides++;
+              final td = s['transit_details'] as Map<String, dynamic>?;
+              final line = td?['line'] as Map<String, dynamic>?;
+              if (line != null) {
+                final type = (line['vehicle'] as Map<String, dynamic>?)?['type'] as String?;
+                if (type == null || type == 'BUS') {
+                  final name = (line['short_name'] ?? line['name']) as String?;
+                  if (name != null && !busLines.contains(name)) busLines.add(name);
+                }
+              }
             }
           }
+          options.add(_TransitOption(
+            eta: duration['text'] as String,
+            dist: distance['text'] as String,
+            durationSecs: (duration['value'] as num).toInt(),
+            distanceMeters: (distance['value'] as num).toInt(),
+            transfers: rides > 1 ? rides - 1 : 0,
+            walkMeters: walkMeters,
+            points: _extractDetailedPolyline(leg),
+            busLines: busLines,
+          ));
+        } catch (_) {
+          // Skip a malformed alternative, keep the others
         }
       }
-      return (eta: eta, dist: dist, points: points, busLines: busLines);
+      return options;
     } catch (_) {
-      return null;
+      return [];
     }
+  }
+
+  // Picks the fastest, easiest and shortest itineraries and shows the
+  // fastest one first.
+  void _setTransitOptions(List<_TransitOption> options, {String? walkHint}) {
+    final fastest = options.reduce(
+        (a, b) => b.durationSecs < a.durationSecs ? b : a);
+    // Most convenient: fewest bus changes, then least walking, then quickest
+    int convenience(_TransitOption a, _TransitOption b) {
+      if (a.transfers != b.transfers) return a.transfers.compareTo(b.transfers);
+      if (a.walkMeters != b.walkMeters) {
+        return a.walkMeters.compareTo(b.walkMeters);
+      }
+      return a.durationSecs.compareTo(b.durationSecs);
+    }
+    final easiest = options.reduce((a, b) => convenience(b, a) < 0 ? b : a);
+    final shortest = options.reduce((a, b) =>
+        b.distanceMeters < a.distanceMeters ||
+                (b.distanceMeters == a.distanceMeters &&
+                    b.durationSecs < a.durationSecs)
+            ? b
+            : a);
+
+    final choices = <_RouteChoice>[];
+    void add(String kind, _TransitOption option) {
+      for (final c in choices) {
+        if (identical(c.option, option)) {
+          c.kinds.add(kind);
+          return;
+        }
+      }
+      choices.add(_RouteChoice([kind], option));
+    }
+    add('fastest', fastest);
+    add('easiest', easiest);
+    add('shortest', shortest);
+
+    setState(() {
+      _routeChoices = choices;
+      _selectedChoice = 0;
+      _fetchingDirections = false;
+      _transportMode = 'bus';
+      _walkHint = walkHint;
+      _applyTransitOption(fastest);
+    });
+  }
+
+  // Must be called inside setState.
+  void _applyTransitOption(_TransitOption option) {
+    _directionsEta = option.eta;
+    _directionsDistance = option.dist;
+    _directionsPolyline = option.points;
+    _busLines = option.busLines;
+  }
+
+  void _chooseRouteOption(int index) {
+    if (index == _selectedChoice || index >= _routeChoices.length) return;
+    setState(() {
+      _selectedChoice = index;
+      _applyTransitOption(_routeChoices[index].option);
+    });
   }
 
   Future<({String eta, String dist, List<LatLng> points})?> _tryDriving(
@@ -646,7 +914,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
       final response =
           await http.get(uri).timeout(const Duration(seconds: 10));
       if (response.statusCode != 200) return null;
-      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final data = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
       if (data['status'] != 'OK') return null;
       final routes = data['routes'] as List<dynamic>;
       if (routes.isEmpty) return null;
@@ -666,31 +934,26 @@ class _MapScreenState extends ConsumerState<MapScreen>
       _transportMode = null;
       _busLines = [];
       _walkHint = null;
+      _routeChoices = [];
+      _selectedChoice = 0;
     });
 
     final dest = LatLng(destination.lat, destination.lon);
     final origin = _userLocation ?? _defaultCenter;
 
-    // â”€â”€ Step 1: direct transit to destination â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Step 1: direct transit to destination ────────────────────────────────
     final direct = await _tryTransit(origin, dest);
-    if (direct != null && mounted) {
-      setState(() {
-        _directionsEta = direct.eta;
-        _directionsDistance = direct.dist;
-        _directionsPolyline = direct.points;
-        _fetchingDirections = false;
-        _transportMode = 'bus';
-        _busLines = direct.busLines;
-        _walkHint = null;
-      });
-      if (direct.points.isNotEmpty) {
+    if (direct.isNotEmpty && mounted) {
+      _setTransitOptions(direct);
+      final allPoints = direct.expand((o) => o.points);
+      if (allPoints.isNotEmpty) {
         _mapController?.animateCamera(CameraUpdate.newLatLngBounds(
-            _latLngBounds([origin, dest, ...direct.points]), 72));
+            _latLngBounds([origin, dest, ...allPoints]), 72));
       }
       return;
     }
 
-    // â”€â”€ Step 2: no direct bus â€” find stops near destination, walk the last bit
+    // ── Step 2: no direct bus — find stops near destination, walk the last bit
     try {
       final nearbyAtDest = await PtxApi.instance.getNearbyStops(
         destination.lat, destination.lon, defaultCity, radius: 800,
@@ -706,7 +969,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
       for (final stop in nearbyAtDest.take(5)) {
         final stopLatLng = LatLng(stop.stopPosition.lat, stop.stopPosition.lon);
         final partial = await _tryTransit(origin, stopLatLng);
-        if (partial == null) continue;
+        if (partial.isEmpty) continue;
 
         final walkDist = haversineDistance(
           stop.stopPosition.lat, stop.stopPosition.lon,
@@ -720,25 +983,17 @@ class _MapScreenState extends ConsumerState<MapScreen>
             _lang, walkMins, distLabel, destination.shortName);
 
         if (mounted) {
-          setState(() {
-            _directionsEta = partial.eta;
-            _directionsDistance = partial.dist;
-            _directionsPolyline = partial.points;
-            _fetchingDirections = false;
-            _transportMode = 'bus';
-            _busLines = partial.busLines;
-            _walkHint = hint;
-          });
+          _setTransitOptions(partial, walkHint: hint);
           // Fix: include actual dest in bounds so the pin is always visible
           _mapController?.animateCamera(CameraUpdate.newLatLngBounds(
               _latLngBounds([origin, dest, stopLatLng,
-                  ...partial.points]), 72));
+                  ...partial.expand((o) => o.points)]), 72));
         }
         return;
       }
     } catch (_) {}
 
-    // â”€â”€ Step 3: close enough to walk? (â‰¤ 1.5 km straight-line) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Step 3: close enough to walk? (≤ 1.5 km straight-line) ─────────────
     final straightLine = haversineDistance(
         origin.latitude, origin.longitude, dest.latitude, dest.longitude);
     if (straightLine <= 1500 && mounted) {
@@ -760,7 +1015,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
       return;
     }
 
-    // â”€â”€ Step 4: fall back to driving directions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Step 4: fall back to driving directions ──────────────────────────────
     final car = await _tryDriving(origin, dest);
     if (car != null && mounted) {
       setState(() {
@@ -779,7 +1034,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
       return;
     }
 
-    // â”€â”€ No route found at all â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── No route found at all ────────────────────────────────────────────────
     if (mounted) {
       setState(() {
         _fetchingDirections = false;
@@ -852,15 +1107,36 @@ class _MapScreenState extends ConsumerState<MapScreen>
     );
   }
 
-  // â”€â”€â”€ Build Google Maps marker set â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─── Build Google Maps marker set ─────────────────────────────────────────
+
+  // Nearby stops are shown on the map only on the plain home view.
+  bool get _showNearbyOnMap => !_inRouteDetail && _selectedDestination == null;
 
   Set<Marker> _buildMarkers(
     List<BusRealTime> buses,
     List<RouteStop> routeStops,
+    List<NearbyStop> nearbyStations,
   ) {
     final markers = <Marker>{};
 
-    // Live bus position markers â€” filtered by direction when in route detail
+    // Bus stops around the user (one marker per real stop)
+    if (_showNearbyOnMap && _nearbyDotIcon != null) {
+      for (final ns in nearbyStations) {
+        markers.add(Marker(
+          markerId: MarkerId('nearby_${ns.stop.stopName.zhTw}'),
+          position: LatLng(ns.stop.stopPosition.lat, ns.stop.stopPosition.lon),
+          icon: _nearbyDotIcon!,
+          anchor: const Offset(0.5, 0.5),
+          infoWindow: InfoWindow(
+            title: ns.stop.stopName.forLang(_lang),
+            snippet: '${ns.distance.round()} m',
+          ),
+          zIndexInt: 0,
+        ));
+      }
+    }
+
+    // Live bus position markers — filtered by direction when in route detail
     for (final bus in buses) {
       if (_selectedDirection != null && bus.direction != _selectedDirection) continue;
       markers.add(Marker(
@@ -876,21 +1152,25 @@ class _MapScreenState extends ConsumerState<MapScreen>
       ));
     }
 
-    // Route stop markers â€” show only selected direction, hidden while destination active
+    // Route stop markers — show only selected direction, hidden while destination active
     if (_selectedDestination == null && _selectedDirection != null) {
       for (final stop in routeStops) {
         if (stop.direction != _selectedDirection) continue;
         markers.add(Marker(
           markerId: MarkerId('rstop_${stop.stopUID}'),
           position: LatLng(stop.stopPosition.lat, stop.stopPosition.lon),
-          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+          icon: _stopDotIcon ??
+              BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+          // Centre the dot on the stop (default anchor is the pin's tip)
+          anchor: _stopDotIcon != null
+              ? const Offset(0.5, 0.5)
+              : const Offset(0.5, 1.0),
           infoWindow: InfoWindow(
             title: stop.stopName.forLang(_lang),
             snippet:
-                '${AppStrings.route(_lang, _selectedRoute ?? '')}  â€¢  ${AppStrings.stopFallbackLabel(_lang, stop.stopSequence)}',
+                '${AppStrings.route(_lang, _selectedRoute ?? '')}  •  ${AppStrings.stopFallbackLabel(_lang, stop.stopSequence)}',
           ),
           onTap: () => _showStopOptions(stop),
-          alpha: 0.85,
           zIndexInt: 1,
         ));
       }
@@ -910,12 +1190,12 @@ class _MapScreenState extends ConsumerState<MapScreen>
     return markers;
   }
 
-  // â”€â”€â”€ Build route polylines from TDX stop positions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─── Build route polylines from TDX stop positions ────────────────────────
 
   Set<Polyline> _buildPolylines(List<RouteStop> stops) {
     final polylines = <Polyline>{};
 
-    // TDX bus route polyline â€” only the selected direction when in route detail
+    // TDX bus route polyline — only the selected direction when in route detail
     if (stops.isNotEmpty && _selectedDirection != null) {
       final dirStops = stops
           .where((s) => s.direction == _selectedDirection)
@@ -937,7 +1217,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
       }
     }
 
-    // Directions route â€” colour depends on transport mode
+    // Directions route — colour depends on transport mode
     if (_directionsPolyline.isNotEmpty) {
       final routeColor = _transportMode == 'car'
           ? AppColors.yellow
@@ -975,6 +1255,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
     }
 
     List<NearbyStop> sortedNearby = [];
+    List<NearbyStop> nearbyStations = [];
     if (_userLocation != null) {
       final nearbyAsync = ref.watch(nearbyStopsProvider((
         lat: _userLocation!.latitude,
@@ -994,10 +1275,17 @@ class _MapScreenState extends ConsumerState<MapScreen>
               ))
           .toList()
         ..sort((a, b) => a.distance.compareTo(b.distance));
+      // TDX returns one record per route & side of the road at the same stop
+      // (e.g. 87 records = 8 real stops), so group by stop name, keeping the
+      // closest record of each, to count and show real stops.
+      final seenNames = <String>{};
+      nearbyStations = sortedNearby
+          .where((ns) => seenNames.add(ns.stop.stopName.zhTw))
+          .toList();
       if (sortedNearby.length > 6) sortedNearby = sortedNearby.sublist(0, 6);
     }
 
-    // Aggregate live arrivals for nearby stops (up to 4 stops â€” covers both sides
+    // Aggregate live arrivals for nearby stops (up to 4 stops — covers both sides
     // of the road so inbound and outbound buses both appear).
     // Paused while route detail is open to avoid competing with route position polls.
     final List<EstimatedArrival> nearbyArrivals;
@@ -1026,22 +1314,29 @@ class _MapScreenState extends ConsumerState<MapScreen>
       nearbyStillLoading = false;
     }
 
-    final markers = _buildMarkers(buses, routeStops);
+    final markers = _buildMarkers(buses, routeStops, nearbyStations);
+    _saveSession();
     final polylines = _buildPolylines(routeStops);
 
     return Scaffold(
       backgroundColor: AppColors.bg,
-      body: Stack(
+      // Sheet sizes are fractions of THIS area's height, which shrinks when
+      // the keyboard opens and excludes the bottom tab bar — so measure it
+      // instead of using the full screen height, or the map's bottom edge
+      // ends up far above the sheet and leaves a blank gap.
+      body: LayoutBuilder(builder: (context, constraints) {
+        final sheetTop = _sheetExtent * constraints.maxHeight;
+        return Stack(
         children: [
-          // â”€â”€ Google Maps â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+          // ── Google Maps ──────────────────────────────────────────────────
           // Bottom is pinned above the sheet's current top edge (rather than
           // filling the whole Stack) so the map's platform view never
-          // underlaps the sheet â€” see _sheetExtent doc comment above.
+          // underlaps the sheet — see _sheetExtent doc comment above.
           Positioned(
             top: 0,
             left: 0,
             right: 0,
-            bottom: _sheetExtent * MediaQuery.sizeOf(context).height,
+            bottom: sheetTop,
             child: GoogleMap(
               initialCameraPosition: CameraPosition(
                 target: _userLocation ?? _defaultCenter,
@@ -1063,6 +1358,17 @@ class _MapScreenState extends ConsumerState<MapScreen>
               compassEnabled: false,
               markers: markers,
               polylines: polylines,
+              circles: {
+                if (_showNearbyOnMap && _userLocation != null)
+                  Circle(
+                    circleId: const CircleId('nearby_radius'),
+                    center: _userLocation!,
+                    radius: _nearbyRadius.toDouble(),
+                    fillColor: AppColors.green.withValues(alpha: 0.06),
+                    strokeColor: AppColors.green.withValues(alpha: 0.35),
+                    strokeWidth: 1,
+                  ),
+              },
               onTap: (_) {
                 _searchFocus.unfocus();
                 setState(() => _showSuggestions = false);
@@ -1070,7 +1376,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
             ),
           ),
 
-          // â”€â”€ Search bar + dropdown â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+          // ── Search bar + dropdown ────────────────────────────────────────
           Positioned(
             top: MediaQuery.of(context).padding.top + 8,
             left: 12,
@@ -1164,7 +1470,72 @@ class _MapScreenState extends ConsumerState<MapScreen>
                   ),
                 ],
 
-                // â”€â”€ ETA card (shown after a destination is selected) â”€â”€â”€â”€â”€â”€â”€â”€
+                // ── Usual trip banner — offered automatically when the user
+                // has made a trip from around here on 2+ days ─────────────
+                if (_frequentTrips.isNotEmpty &&
+                    _selectedDestination == null &&
+                    !_showSuggestions &&
+                    !_inRouteDetail &&
+                    !_usualTripDismissed) ...[
+                  const SizedBox(height: 4),
+                  GestureDetector(
+                    onTap: () => _selectSuggestion(_frequentTrips.first),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xF21F2330),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                            color: AppColors.green.withValues(alpha: 0.5)),
+                        boxShadow: const [
+                          BoxShadow(
+                              color: Colors.black38,
+                              blurRadius: 8,
+                              offset: Offset(0, 3))
+                        ],
+                      ),
+                      child: Row(children: [
+                        const Icon(Icons.history_rounded,
+                            color: AppColors.green, size: 16),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                AppStrings.usualTripBanner(
+                                    _lang,
+                                    _lang == AppLanguage.en &&
+                                            _frequentTrips.first.shortNameEn
+                                                .isNotEmpty
+                                        ? _frequentTrips.first.shortNameEn
+                                        : _frequentTrips.first.shortName),
+                                style: const TextStyle(
+                                    color: AppColors.textPrimary,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w500),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              Text(AppStrings.t(_lang, 'tapForRecommended'),
+                                  style: const TextStyle(
+                                      color: AppColors.green, fontSize: 11)),
+                            ],
+                          ),
+                        ),
+                        GestureDetector(
+                          onTap: () =>
+                              setState(() => _usualTripDismissed = true),
+                          child: const Icon(Icons.close_rounded,
+                              color: AppColors.textMuted, size: 18),
+                        ),
+                      ]),
+                    ),
+                  ),
+                ],
+
+                // ── ETA card (shown after a destination is selected) ────────
                 if (_selectedDestination != null && !_showSuggestions) ...[
                   const SizedBox(height: 4),
                   Container(
@@ -1204,7 +1575,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
                                     fontSize: 13)),
                           ])
                         : _transportMode == null
-                            // â”€â”€ No route found â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+                            // ── No route found ───────────────────────────
                             ? Row(children: [
                                 const Icon(Icons.not_interested_rounded,
                                     color: AppColors.textMuted, size: 16),
@@ -1238,7 +1609,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
                                       color: AppColors.textMuted, size: 18),
                                 ),
                               ])
-                            // â”€â”€ Route found â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+                            // ── Route found ──────────────────────────────
                             : Row(children: [
                                 Icon(
                                   _transportMode == 'car'
@@ -1340,7 +1711,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
                                       // ETA + distance
                                       if (_directionsEta != null)
                                         Text(
-                                          '$_directionsEta Â· $_directionsDistance',
+                                          '$_directionsEta · $_directionsDistance',
                                           style: TextStyle(
                                               color: _transportMode == 'car'
                                                   ? AppColors.yellow
@@ -1349,6 +1720,20 @@ class _MapScreenState extends ConsumerState<MapScreen>
                                                       : AppColors.green,
                                               fontSize: 12),
                                         ),
+                                      // Transfers + walking, then the
+                                      // fastest / easiest / shortest choice
+                                      if (_transportMode == 'bus' &&
+                                          _routeChoices.isNotEmpty) ...[
+                                        Text(
+                                          '${AppStrings.transfersLabel(_lang, _routeChoices[_selectedChoice].option.transfers)}'
+                                          ' · ${AppStrings.walkLabel(_lang, _routeChoices[_selectedChoice].option.walkMeters)}',
+                                          style: const TextStyle(
+                                              color: AppColors.textSecondary,
+                                              fontSize: 11),
+                                        ),
+                                        const SizedBox(height: 6),
+                                        _buildRouteOptionChips(),
+                                      ],
                                       // Walk hint (bus to nearby stop + walk)
                                       if (_walkHint != null) ...[
                                         const SizedBox(height: 3),
@@ -1385,7 +1770,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
             ),
           ),
 
-          // â”€â”€ Right-side buttons â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+          // ── Right-side buttons ───────────────────────────────────────────
           Positioned(
             top: MediaQuery.of(context).padding.top + 8,
             right: 12,
@@ -1418,7 +1803,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
             ),
           ),
 
-          // â”€â”€ Back button (visible only in route detail) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+          // ── Back button (visible only in route detail) ──────────────
           if (_inRouteDetail)
             Positioned(
               bottom: MediaQuery.of(context).padding.bottom + 90,
@@ -1469,7 +1854,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
               ),
             ),
 
-          // â”€â”€ Draggable bottom sheet â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+          // ── Draggable bottom sheet ───────────────────────────────────────
           DraggableScrollableSheet(
             controller: _sheetController,
             initialChildSize: 0.10,
@@ -1489,7 +1874,8 @@ class _MapScreenState extends ConsumerState<MapScreen>
                     ? _buildRouteDetailSheet(
                         scrollController, routeStops, buses)
                     : _buildTabSheet(scrollController, nearbyArrivals,
-                        sortedNearby, favourites, nearbyStillLoading),
+                        sortedNearby, nearbyStations, favourites,
+                        nearbyStillLoading),
               );
             },
           ),
@@ -1497,7 +1883,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
           // ── Voice mic button — tracks the sheet's live top edge exactly
           // like GoogleMap does, so it never sits underneath the sheet.
           Positioned(
-            bottom: (_sheetExtent * MediaQuery.sizeOf(context).height) + 16,
+            bottom: sheetTop + 16,
             right: 12,
             child: _VoiceMicButton(
               isListening: _isListening,
@@ -1510,7 +1896,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
           // ── Live transcription bubble while listening ──────────────────
           if (_isListening)
             Positioned(
-              bottom: (_sheetExtent * MediaQuery.sizeOf(context).height) + 72,
+              bottom: sheetTop + 72,
               left: 20,
               right: 68,
               child: IgnorePointer(
@@ -1549,11 +1935,12 @@ class _MapScreenState extends ConsumerState<MapScreen>
               ),
             ),
         ],
-      ),
+      );
+      }),
     );
   }
 
-  // â”€â”€â”€ Stop options modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─── Stop options modal ───────────────────────────────────────────────────
 
   void _showStopOptions(RouteStop stop) {
     showModalBottomSheet(
@@ -1596,7 +1983,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
           ]),
           const SizedBox(height: 4),
           Text(
-              '${AppStrings.stopFallbackLabel(_lang, stop.stopSequence)}  â€¢  ${_selectedDirection == 0 ? AppStrings.t(_lang, 'outbound') : AppStrings.t(_lang, 'inbound')}',
+              '${AppStrings.stopFallbackLabel(_lang, stop.stopSequence)}  •  ${_selectedDirection == 0 ? AppStrings.t(_lang, 'outbound') : AppStrings.t(_lang, 'inbound')}',
               style: const TextStyle(
                   color: AppColors.textMuted, fontSize: 12)),
           const SizedBox(height: 16),
@@ -1641,12 +2028,13 @@ class _MapScreenState extends ConsumerState<MapScreen>
     );
   }
 
-  // â”€â”€â”€ Sheet content builders â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─── Sheet content builders ───────────────────────────────────────────────
 
   Widget _buildTabSheet(
     ScrollController sc,
     List<EstimatedArrival> nearbyArrivals,
     List<NearbyStop> sortedNearby,
+    List<NearbyStop> nearbyStations,
     List<String> favourites,
     bool nearbyLoading,
   ) {
@@ -1655,7 +2043,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
       padding: EdgeInsets.fromLTRB(
           12, 0, 12, 12 + MediaQuery.of(context).padding.bottom),
       children: [
-        // Drag handle â€” drag or tap to cycle through snap positions
+        // Drag handle — drag or tap to cycle through snap positions
         GestureDetector(
           onTap: _toggleSheet,
           behavior: HitTestBehavior.opaque,
@@ -1691,7 +2079,8 @@ class _MapScreenState extends ConsumerState<MapScreen>
         ),
         const SizedBox(height: 12),
         if (_sheetTab == 0)
-          _buildNearbyTab(nearbyArrivals, sortedNearby, nearbyLoading)
+          _buildNearbyTab(
+              nearbyArrivals, sortedNearby, nearbyStations, nearbyLoading)
         else
           _buildSearchTab(favourites),
       ],
@@ -1712,7 +2101,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
         : const AsyncValue<List<EstimatedArrival>>.data([]);
     final arrivals = arrivalsAsync.value ?? [];
 
-    // Build stopUID â†’ best ETA for selected direction
+    // Build stopUID → best ETA for selected direction
     final etaMap = <String, ({int seconds, int stopStatus})>{};
     for (final a in arrivals) {
       if (a.direction == _selectedDirection) {
@@ -1758,7 +2147,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
           ),
         ),
 
-        // Direction tabs â€” show when stops are loaded
+        // Direction tabs — show when stops are loaded
         if (!isLoading && (outEnd.isNotEmpty || inEnd.isNotEmpty)) ...[
           Container(
             decoration: BoxDecoration(
@@ -1805,7 +2194,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
             final etaSec = etaData?.seconds;
             final stopSt = etaData?.stopStatus ?? -1;
 
-            // ETA label + colour â€” mirrors the reference Taichung app style
+            // ETA label + colour — mirrors the reference Taichung app style
             String? etaLabel;
             Color etaColor = AppColors.textMuted;
             bool isApproach = false;
@@ -1932,7 +2321,60 @@ class _MapScreenState extends ConsumerState<MapScreen>
     );
   }
 
+  // Header ("8 bus stops within 500 m") + stop chips, then live arrivals.
   Widget _buildNearbyTab(
+      List<EstimatedArrival> arrivals,
+      List<NearbyStop> sortedNearby,
+      List<NearbyStop> nearbyStations,
+      bool loading) {
+    final arrivalsView = _buildNearbyArrivals(arrivals, sortedNearby, loading);
+    if (_userLocation == null || nearbyStations.isEmpty) return arrivalsView;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(children: [
+          const Icon(Icons.place_rounded, color: AppColors.green, size: 14),
+          const SizedBox(width: 4),
+          Text(
+              AppStrings.nearbyStopsCount(
+                  _lang, nearbyStations.length, _nearbyRadius),
+              style: const TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600)),
+        ]),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 46,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: nearbyStations.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 6),
+            itemBuilder: (_, i) {
+              final ns = nearbyStations[i];
+              return NearbyStopChip(
+                stop: ns.stop,
+                distance: ns.distance,
+                dotColor: AppColors.green,
+                onTap: () {
+                  _mapController?.animateCamera(CameraUpdate.newLatLngZoom(
+                      LatLng(ns.stop.stopPosition.lat,
+                          ns.stop.stopPosition.lon),
+                      17));
+                  _mapController?.showMarkerInfoWindow(
+                      MarkerId('nearby_${ns.stop.stopName.zhTw}'));
+                },
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 12),
+        arrivalsView,
+      ],
+    );
+  }
+
+  Widget _buildNearbyArrivals(
       List<EstimatedArrival> arrivals,
       List<NearbyStop> sortedNearby,
       bool loading) {
@@ -1954,7 +2396,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
                     color: AppColors.textMuted, fontSize: 13))),
       );
     }
-    // First load â€” show spinner instead of "no buses"
+    // First load — show spinner instead of "no buses"
     if (loading && arrivals.isEmpty) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 24),
@@ -2143,7 +2585,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(AppStrings.t(_lang, 'resultsHeader'),
+                    Text(AppStrings.resultsCount(_lang, routes.length),
                         style: const TextStyle(
                             color: AppColors.textMuted,
                             fontSize: 11,
@@ -2180,7 +2622,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
     final isFav = favourites.contains(route.routeName.zhTw);
 
     return GestureDetector(
-      onTap: () => _enterRouteDetail(route.routeID, direction),
+      onTap: () => _enterRouteDetail(route.routeName.zhTw, direction),
       child: Container(
         margin: const EdgeInsets.only(bottom: 6),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
@@ -2260,6 +2702,51 @@ class _MapScreenState extends ConsumerState<MapScreen>
     );
   }
 
+  // Fastest / easiest / shortest chips. When one itinerary is all three,
+  // say so instead.
+  Widget _buildRouteOptionChips() {
+    if (_routeChoices.length == 1) {
+      return Row(children: [
+        const Icon(Icons.verified_rounded, color: AppColors.green, size: 12),
+        const SizedBox(width: 4),
+        Flexible(
+          child: Text(AppStrings.t(_lang, 'bestAllRound'),
+              style: const TextStyle(
+                  color: AppColors.textSecondary, fontSize: 11)),
+        ),
+      ]);
+    }
+    const icons = {
+      'fastest': Icons.bolt_rounded,
+      'easiest': Icons.airline_seat_recline_normal_rounded,
+      'shortest': Icons.straighten_rounded,
+    };
+    const labelKeys = {
+      'fastest': 'fastestRoute',
+      'easiest': 'easiestRoute',
+      'shortest': 'shortestRoute',
+    };
+    String metric(String kind, _TransitOption o) => switch (kind) {
+          'fastest' => o.eta,
+          'easiest' => AppStrings.transfersLabel(_lang, o.transfers),
+          _ => o.dist,
+        };
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      children: [
+        for (var i = 0; i < _routeChoices.length; i++)
+          _RouteOptionChip(
+            icon: icons[_routeChoices[i].kinds.first]!,
+            label: '${_routeChoices[i].kinds.map((k) => AppStrings.t(_lang, labelKeys[k]!)).join('·')}'
+                ' · ${metric(_routeChoices[i].kinds.first, _routeChoices[i].option)}',
+            selected: i == _selectedChoice,
+            onTap: () => _chooseRouteOption(i),
+          ),
+      ],
+    );
+  }
+
   Widget _buildSuggestionsList() {
     if (_loadingSuggestions && _suggestions.isEmpty) {
       return Padding(
@@ -2306,7 +2793,50 @@ class _MapScreenState extends ConsumerState<MapScreen>
   }
 }
 
-// â”€â”€â”€ Widgets â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Widgets ──────────────────────────────────────────────────────────────────
+
+class _RouteOptionChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  const _RouteOptionChip({
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = selected ? AppColors.green : AppColors.textMuted;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: selected
+              ? AppColors.green.withValues(alpha: 0.15)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+              color: selected
+                  ? AppColors.green.withValues(alpha: 0.5)
+                  : AppColors.border),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, color: color, size: 12),
+          const SizedBox(width: 3),
+          Text(label,
+              style: TextStyle(
+                  color: color,
+                  fontSize: 11,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.w400)),
+        ]),
+      ),
+    );
+  }
+}
 
 class _SuggestionTile extends StatelessWidget {
   final _LocationResult result;
@@ -2344,8 +2874,12 @@ class _SuggestionTile extends StatelessWidget {
         ),
         child: Row(
           children: [
-            const Icon(Icons.place_outlined,
-                color: AppColors.blue, size: 16),
+            Icon(
+                result.tripDays > 0
+                    ? Icons.history_rounded
+                    : Icons.place_outlined,
+                color: result.tripDays > 0 ? AppColors.green : AppColors.blue,
+                size: 16),
             const SizedBox(width: 10),
             Expanded(
               child: Column(
@@ -2366,6 +2900,12 @@ class _SuggestionTile extends StatelessWidget {
                             color: AppColors.textSecondary, fontSize: 11),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis),
+                  ],
+                  if (result.tripDays > 0) ...[
+                    const SizedBox(height: 1),
+                    Text(AppStrings.frequentTripLabel(lang, result.tripDays),
+                        style: const TextStyle(
+                            color: AppColors.green, fontSize: 11)),
                   ],
                   const SizedBox(height: 1),
                   Text(result.displayName,
@@ -2541,4 +3081,30 @@ class _SheetTab extends StatelessWidget {
       ),
     );
   }
+}
+
+// ─── Route stop marker icon ─────────────────────────────────────────────────
+
+/// Draws a coloured dot with a white outline, [size] logical pixels wide.
+/// Rendered at 3x so it stays crisp on high-density screens.
+Future<BitmapDescriptor> _createStopDotIcon(double size,
+    {Color color = AppColors.blue}) async {
+  const scale = 3.0;
+  final px = size * scale;
+  final recorder = ui.PictureRecorder();
+  final canvas = Canvas(recorder);
+  final center = Offset(px / 2, px / 2);
+  final radius = px / 2;
+
+  canvas.drawCircle(center, radius, Paint()..color = Colors.white);
+  canvas.drawCircle(center, radius * 0.72, Paint()..color = color);
+
+  final image =
+      await recorder.endRecording().toImage(px.round(), px.round());
+  final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+  return BitmapDescriptor.bytes(
+    bytes!.buffer.asUint8List(),
+    width: size,
+    height: size,
+  );
 }

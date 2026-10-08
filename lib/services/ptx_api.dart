@@ -97,7 +97,7 @@ class PtxApi {
     if (response.statusCode != 200) {
       throw Exception('PTX auth failed (${response.statusCode})');
     }
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final data = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
     _accessToken = data['access_token'] as String;
     final expiresIn = data['expires_in'] as int;
     _tokenExpiry = DateTime.now().add(Duration(seconds: expiresIn - 60));
@@ -148,7 +148,7 @@ class PtxApi {
         if (response.statusCode != 200) {
           throw Exception('PTX API error ${response.statusCode}');
         }
-        final List<dynamic> list = jsonDecode(response.body) as List<dynamic>;
+        final List<dynamic> list = jsonDecode(utf8.decode(response.bodyBytes)) as List<dynamic>;
         _cache[cacheKey] = _CacheEntry(list, DateTime.now().add(_ttlFor(path)));
         return list.map((e) => fromJson(e as Map<String, dynamic>)).toList();
       }
@@ -260,7 +260,7 @@ class PtxApi {
           throw Exception('PTX API error ${response.statusCode}');
         }
         final List<dynamic> list =
-            jsonDecode(response.body) as List<dynamic>;
+            jsonDecode(utf8.decode(response.bodyBytes)) as List<dynamic>;
         _cache[cacheKey] =
             _CacheEntry(list, DateTime.now().add(_ttlFor(path)));
         return _flattenRouteStops(list, routeName);

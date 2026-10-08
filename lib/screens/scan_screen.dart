@@ -1,4 +1,4 @@
-﻿// ScanScreen â€” OCR a bus stop sign to get route previews for each detected number
+﻿// ScanScreen — OCR a bus stop sign to get route previews for each detected number
 
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -86,7 +86,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
   }
 
   static List<String> _extractBusNumbers(String text) {
-    // Match standalone 1â€“3 digit numbers in range 1â€“500, plus BRT
+    // Match standalone 1–3 digit numbers in range 1–500, plus BRT
     final re = RegExp(r'(?<!\d)(BRT|\d{1,3})(?!\d)');
     final found = <String>{};
     for (final m in re.allMatches(text)) {
@@ -114,7 +114,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // â”€â”€ Header â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            // ── Header ───────────────────────────────────────────────────────
             Padding(
               padding: const EdgeInsets.fromLTRB(4, 8, 16, 8),
               child: Row(
@@ -136,7 +136,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
               ),
             ),
 
-            // â”€â”€ Capture buttons â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            // ── Capture buttons ──────────────────────────────────────────────
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(
@@ -160,7 +160,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
 
             const SizedBox(height: 12),
 
-            // â”€â”€ Captured image thumbnail â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            // ── Captured image thumbnail ─────────────────────────────────────
             if (_image != null)
               Container(
                 margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
@@ -179,7 +179,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                 ),
               ),
 
-            // â”€â”€ Results / placeholder â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            // ── Results / placeholder ────────────────────────────────────────
             Expanded(child: _buildContent()),
           ],
         ),
@@ -274,7 +274,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
   }
 }
 
-// â”€â”€ Sub-widgets â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Sub-widgets ────────────────────────────────────────────────────────────────
 
 class _ActionBtn extends StatelessWidget {
   final IconData icon;
@@ -503,7 +503,7 @@ class _DirectionRow extends StatelessWidget {
         const SizedBox(width: 8),
         Expanded(
           child: Text(
-            '$from  â†’  $to',
+            '$from  →  $to',
             style: const TextStyle(
                 color: AppColors.textSecondary, fontSize: 12),
             overflow: TextOverflow.ellipsis,

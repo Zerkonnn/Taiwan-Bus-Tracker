@@ -1,4 +1,4 @@
-﻿// Taiwan Bus Tracker â€” Flutter entry point
+﻿// Taiwan Bus Tracker — Flutter entry point
 // Mirrors App.tsx + AppNavigator.tsx from the React Native version
 
 import 'package:flutter/material.dart';
@@ -11,10 +11,12 @@ import 'screens/stop_detail_screen.dart';
 import 'screens/favourites_screen.dart';
 import 'screens/scan_screen.dart';
 import 'utils/app_strings.dart';
+import 'utils/crash_recovery.dart';
 import 'utils/theme.dart';
 
 void main() {
-  runApp(
+  // CrashRecovery replaces the red error screen with an automatic restart.
+  CrashRecovery.run(
     // ProviderScope is the Riverpod equivalent of QueryClientProvider
     const ProviderScope(
       child: TaiwanBusApp(),
@@ -31,7 +33,7 @@ class TaiwanBusApp extends StatelessWidget {
       title: 'Taiwan Bus Tracker',
       debugShowCheckedModeBanner: false,
       theme: buildAppTheme(),
-      // Named routes â€” mirrors React Navigation stack + tab navigator
+      // Named routes — mirrors React Navigation stack + tab navigator
       initialRoute: '/',
       onGenerateRoute: (settings) {
         switch (settings.name) {
@@ -73,7 +75,7 @@ class TaiwanBusApp extends StatelessWidget {
   }
 }
 
-// â”€â”€â”€ Bottom tab navigator â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Bottom tab navigator ─────────────────────────────────────────────────────
 
 class _MainTabs extends ConsumerStatefulWidget {
   const _MainTabs();
@@ -83,7 +85,8 @@ class _MainTabs extends ConsumerStatefulWidget {
 }
 
 class _MainTabsState extends ConsumerState<_MainTabs> {
-  int _index = 0;
+  // Reopen the same tab after a crash restart
+  int _index = (CrashRecovery.takeRestored('mainTab') as int?) ?? 0;
 
   static const _screens = [
     MapScreen(),
@@ -101,7 +104,10 @@ class _MainTabsState extends ConsumerState<_MainTabs> {
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
-        onDestinationSelected: (i) => setState(() => _index = i),
+        onDestinationSelected: (i) {
+          CrashRecovery.session['mainTab'] = i;
+          setState(() => _index = i);
+        },
         backgroundColor: AppColors.bgSheet,
         indicatorColor: AppColors.blue.withValues(alpha: 0.2),
         surfaceTintColor: Colors.transparent,

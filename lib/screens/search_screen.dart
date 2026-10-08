@@ -1,4 +1,4 @@
-﻿// SearchScreen â€” route search with popular-route quick access
+﻿// SearchScreen — route search with popular-route quick access
 // Mirrors src/screens/SearchScreen.tsx
 
 import 'dart:async';
@@ -57,7 +57,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // â”€â”€ Header â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            // ── Header ──────────────────────────────────────────────────────
             Padding(
               padding: const EdgeInsets.fromLTRB(4, 8, 16, 8),
               child: Row(
@@ -79,7 +79,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
               ),
             ),
 
-            // â”€â”€ Search input â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            // ── Search input ─────────────────────────────────────────────────
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Container(
@@ -123,7 +123,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
 
             const SizedBox(height: 16),
 
-            // â”€â”€ Results or popular routes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            // ── Results or popular routes ────────────────────────────────────
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -158,7 +158,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   }
 }
 
-// â”€â”€ Sub-widgets â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Sub-widgets ────────────────────────────────────────────────────────────────
 
 class _Loading extends StatelessWidget {
   final AppLanguage lang;
@@ -250,7 +250,7 @@ class _ResultList extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              '${route.departureStopNameZh} â†” ${route.destinationStopNameZh}',
+                              '${route.departureStopNameZh} ↔ ${route.destinationStopNameZh}',
                               style: const TextStyle(
                                   color: AppColors.textPrimary,
                                   fontSize: 13,
