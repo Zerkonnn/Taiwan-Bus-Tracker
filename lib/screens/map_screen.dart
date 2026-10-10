@@ -4,6 +4,7 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -68,7 +69,9 @@ class _TransitOption {
   final int distanceMeters;
   final int transfers; // bus changes: 0 = one bus all the way
   final int walkMeters; // total walking along the itinerary
-  final List<LatLng> points;
+  // The itinerary in travel order, one entry per walk / bus ride. Mutable so
+  // bus rides can be swapped for the road-snapped version once it loads.
+  final List<_RouteSegment> segments;
   final List<String> busLines;
 
   const _TransitOption({
@@ -78,9 +81,28 @@ class _TransitOption {
     required this.distanceMeters,
     required this.transfers,
     required this.walkMeters,
-    required this.points,
+    required this.segments,
     required this.busLines,
   });
+
+  Iterable<LatLng> get points => segments.expand((s) => s.points);
+}
+
+enum _SegMode { walk, bus, car }
+
+// One leg of a route on the map, drawn according to how it is travelled:
+// bus rides as a solid outlined line, walking as a trail of footprints.
+class _RouteSegment {
+  final _SegMode mode;
+  final List<LatLng> points;
+  final String? line; // bus route number (bus only)
+  final LatLng? from; // boarding stop (bus only)
+  final LatLng? to; // alighting stop (bus only)
+
+  const _RouteSegment(this.mode, this.points, {this.line, this.from, this.to});
+
+  _RouteSegment withPoints(List<LatLng> points) =>
+      _RouteSegment(mode, points, line: line, from: from, to: to);
 }
 
 // A route option shown to the user, with every reason it was picked —
@@ -90,6 +112,10 @@ class _RouteChoice {
   final _TransitOption option;
   _RouteChoice(this.kinds, this.option);
 }
+
+// Walking is drawn in the light text colour so it never reads as part of a
+// (teal) bus ride.
+const _walkColor = AppPalette.textPrimary;
 
 // Radius (m) used for "bus stops near you" — matches getNearbyStops' default.
 const _nearbyRadius = 500;
@@ -300,7 +326,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
 
   // Directions state
   _LocationResult? _selectedDestination;
-  List<LatLng> _directionsPolyline = [];
+  List<_RouteSegment> _directionsSegments = [];
   String? _directionsEta;
   String? _directionsDistance;
   bool _fetchingDirections = false;
@@ -347,6 +373,17 @@ class _MapScreenState extends ConsumerState<MapScreen>
   BitmapDescriptor? _stopDotIcon;
   BitmapDescriptor? _nearbyDotIcon; // green dot for stops around the user
 
+  // Walking legs are drawn as alternating left / right footprints, bus rides
+  // as a solid line with a route-number badge where you board.
+  BitmapDescriptor? _footLeftIcon;
+  BitmapDescriptor? _footRightIcon;
+  final Map<String, BitmapDescriptor> _busBadgeIcons = {};
+
+  // Footprint spacing follows the zoom so the trail keeps the same look on
+  // screen. Only redrawn once the zoom settles on a new half-step.
+  double _cameraZoom = 14;
+  double _footprintZoom = 14;
+
   @override
   void initState() {
     super.initState();
@@ -357,6 +394,16 @@ class _MapScreenState extends ConsumerState<MapScreen>
     });
     _createStopDotIcon(12, color: AppPalette.textSecondary).then((icon) {
       if (mounted) setState(() => _nearbyDotIcon = icon);
+    });
+    Future.wait([
+      _createFootprintIcon(left: true),
+      _createFootprintIcon(left: false),
+    ]).then((icons) {
+      if (!mounted) return;
+      setState(() {
+        _footLeftIcon = icons[0];
+        _footRightIcon = icons[1];
+      });
     });
     _searchFocus.addListener(() {
       if (_searchFocus.hasFocus && _searchController.text.isEmpty) {
@@ -676,7 +723,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
       _showSuggestions = false;
       _loadingSuggestions = false;
       _selectedDestination = result;
-      _directionsPolyline = [];
+      _directionsSegments = [];
       _directionsEta = null;
       _directionsDistance = null;
       _fetchingDirections = true;
@@ -758,7 +805,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
   void _clearDirections() {
     setState(() {
       _selectedDestination = null;
-      _directionsPolyline = [];
+      _directionsSegments = [];
       _directionsEta = null;
       _directionsDistance = null;
       _fetchingDirections = false;
@@ -827,7 +874,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
             distanceMeters: (distance['value'] as num).toInt(),
             transfers: rides > 1 ? rides - 1 : 0,
             walkMeters: walkMeters,
-            points: _extractDetailedPolyline(leg),
+            segments: _extractSegments(leg),
             busLines: busLines,
           ));
         } catch (_) {
@@ -883,13 +930,17 @@ class _MapScreenState extends ConsumerState<MapScreen>
       _walkHint = walkHint;
       _applyTransitOption(fastest);
     });
+    _snapBusSegmentsToRoads(options);
   }
 
   // Must be called inside setState.
   void _applyTransitOption(_TransitOption option) {
     _directionsEta = option.eta;
     _directionsDistance = option.dist;
-    _directionsPolyline = option.points;
+    _directionsSegments = option.segments;
+    for (final seg in option.segments) {
+      if (seg.line != null) _ensureBusBadge(seg.line!);
+    }
     _busLines = option.busLines;
   }
 
@@ -983,6 +1034,13 @@ class _MapScreenState extends ConsumerState<MapScreen>
         final hint = AppStrings.walkHintLabel(
             _lang, walkMins, distLabel, destination.shortName);
 
+        // Draw the last stretch on foot from the stop to the destination
+        final lastWalk = await _tryWalking(stopLatLng, dest) ??
+            [stopLatLng, dest];
+        for (final option in partial) {
+          option.segments.add(_RouteSegment(_SegMode.walk, lastWalk));
+        }
+
         if (mounted) {
           _setTransitOptions(partial, walkHint: hint);
           // Fix: include actual dest in bounds so the pin is always visible
@@ -998,6 +1056,8 @@ class _MapScreenState extends ConsumerState<MapScreen>
     final straightLine = haversineDistance(
         origin.latitude, origin.longitude, dest.latitude, dest.longitude);
     if (straightLine <= 1500 && mounted) {
+      final walkPath = await _tryWalking(origin, dest);
+      if (!mounted) return;
       final walkMins = (straightLine / 75).ceil();
       final distLabel = straightLine < 1000
           ? '${straightLine.toStringAsFixed(0)} m'
@@ -1005,14 +1065,16 @@ class _MapScreenState extends ConsumerState<MapScreen>
       setState(() {
         _directionsEta = AppStrings.approxMinsLabel(_lang, walkMins);
         _directionsDistance = distLabel;
-        _directionsPolyline = [];
+        _directionsSegments = [
+          _RouteSegment(_SegMode.walk, walkPath ?? [origin, dest]),
+        ];
         _fetchingDirections = false;
         _transportMode = 'walk';
         _busLines = [];
         _walkHint = null;
       });
       _mapController?.animateCamera(CameraUpdate.newLatLngBounds(
-          _latLngBounds([origin, dest]), 72));
+          _latLngBounds([origin, dest, ...?walkPath]), 72));
       return;
     }
 
@@ -1022,7 +1084,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
       setState(() {
         _directionsEta = car.eta;
         _directionsDistance = car.dist;
-        _directionsPolyline = car.points;
+        _directionsSegments = [_RouteSegment(_SegMode.car, car.points)];
         _fetchingDirections = false;
         _transportMode = 'car';
         _busLines = [];
@@ -1040,7 +1102,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
       setState(() {
         _fetchingDirections = false;
         _transportMode = null;
-        _directionsPolyline = [];
+        _directionsSegments = [];
         _directionsEta = null;
         _directionsDistance = null;
         _busLines = [];
@@ -1049,26 +1111,217 @@ class _MapScreenState extends ConsumerState<MapScreen>
     }
   }
 
-  // Concatenates each step's own polyline instead of using overview_polyline,
-  // which Google deliberately simplifies for small-scale display and cuts
-  // corners at turns. Per-step polylines follow the actual road geometry.
-  List<LatLng> _extractDetailedPolyline(Map<String, dynamic> leg) {
-    final points = <LatLng>[];
+  // Splits a transit leg into walk / bus segments in travel order.
+  List<_RouteSegment> _extractSegments(Map<String, dynamic> leg) {
+    final segments = <_RouteSegment>[];
     for (final step in leg['steps'] as List<dynamic>) {
       final s = step as Map<String, dynamic>;
-      final encoded = (s['polyline'] as Map<String, dynamic>?)?['points'] as String?;
-      if (encoded == null) continue;
-      final stepPoints = _decodePolyline(encoded);
-      if (points.isNotEmpty &&
-          stepPoints.isNotEmpty &&
-          points.last == stepPoints.first) {
-        points.addAll(stepPoints.skip(1));
+      final mode = s['travel_mode'];
+      if (mode == 'TRANSIT') {
+        final td = s['transit_details'] as Map<String, dynamic>?;
+        final line = td?['line'] as Map<String, dynamic>?;
+        LatLng? stopAt(String key) {
+          final loc = (td?[key] as Map<String, dynamic>?)?['location']
+              as Map<String, dynamic>?;
+          if (loc == null) return null;
+          return LatLng(
+              (loc['lat'] as num).toDouble(), (loc['lng'] as num).toDouble());
+        }
+
+        segments.add(_RouteSegment(
+          _SegMode.bus,
+          _decodeStepPolyline(s),
+          line: (line?['short_name'] ?? line?['name']) as String?,
+          from: stopAt('departure_stop'),
+          to: stopAt('arrival_stop'),
+        ));
       } else {
-        points.addAll(stepPoints);
+        // A walking step's own polyline is a summary; its turn-by-turn
+        // sub-steps carry the full path along the streets.
+        final subSteps = s['steps'] as List<dynamic>?;
+        final points = subSteps != null && subSteps.isNotEmpty
+            ? _joinPaths(subSteps
+                .map((sub) => _decodeStepPolyline(sub as Map<String, dynamic>)))
+            : _decodeStepPolyline(s);
+        segments.add(_RouteSegment(
+            mode == 'WALKING' ? _SegMode.walk : _SegMode.car, points));
+      }
+    }
+    return segments.where((seg) => seg.points.length >= 2).toList();
+  }
+
+  List<LatLng> _decodeStepPolyline(Map<String, dynamic> step) {
+    final encoded =
+        (step['polyline'] as Map<String, dynamic>?)?['points'] as String?;
+    return encoded == null ? [] : _decodePolyline(encoded);
+  }
+
+  List<LatLng> _joinPaths(Iterable<List<LatLng>> paths) {
+    final points = <LatLng>[];
+    for (final path in paths) {
+      if (points.isNotEmpty && path.isNotEmpty && points.last == path.first) {
+        points.addAll(path.skip(1));
+      } else {
+        points.addAll(path);
       }
     }
     return points;
   }
+
+  Future<List<LatLng>?> _tryWalking(LatLng from, LatLng to) async {
+    try {
+      final uri = Uri.parse(
+        'https://maps.googleapis.com/maps/api/directions/json',
+      ).replace(queryParameters: {
+        'origin': '${from.latitude},${from.longitude}',
+        'destination': '${to.latitude},${to.longitude}',
+        'mode': 'walking',
+        'key': _googleMapsApiKey,
+      });
+      final response = await http.get(uri).timeout(const Duration(seconds: 10));
+      if (response.statusCode != 200) return null;
+      final data =
+          jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+      if (data['status'] != 'OK') return null;
+      final routes = data['routes'] as List<dynamic>;
+      if (routes.isEmpty) return null;
+      final leg = ((routes[0] as Map)['legs'] as List<dynamic>)[0]
+          as Map<String, dynamic>;
+      final points = _extractDetailedPolyline(leg);
+      return points.length >= 2 ? points : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // ─── Snapping bus rides to the road ───────────────────────────────────────
+  //
+  // For many Taiwan bus lines Google has no route geometry, so its transit
+  // polyline just joins stop to stop and cuts every corner. TDX publishes the
+  // real road path of each route (Bus/Shape); we cut out the part between the
+  // boarding and alighting stops and draw that instead. Any ride that can't
+  // be matched confidently keeps Google's line.
+
+  Future<void> _snapBusSegmentsToRoads(List<_TransitOption> options) async {
+    final shapesByLine = <String, List<BusShape>>{};
+    var changed = false;
+    for (final option in options) {
+      for (var i = 0; i < option.segments.length; i++) {
+        final seg = option.segments[i];
+        if (seg.mode != _SegMode.bus ||
+            seg.line == null ||
+            seg.from == null ||
+            seg.to == null) {
+          continue;
+        }
+        var shapes = shapesByLine[seg.line!];
+        if (shapes == null) {
+          try {
+            shapes =
+                await PtxApi.instance.getRouteShapes(seg.line!, defaultCity);
+          } catch (_) {
+            shapes = const [];
+          }
+          shapesByLine[seg.line!] = shapes;
+        }
+        final snapped = _sliceShape(shapes, seg.from!, seg.to!, seg.points);
+        if (snapped != null) {
+          option.segments[i] = seg.withPoints(snapped);
+          changed = true;
+        }
+      }
+    }
+    if (!changed || !mounted || _routeChoices.isEmpty) return;
+    // Redraw only if one of these options is still the one on screen
+    final current = _routeChoices[_selectedChoice].option;
+    if (options.any((o) => identical(o, current))) {
+      setState(() => _applyTransitOption(current));
+    }
+  }
+
+  // The stretch of a route shape from [from] to [to], or null when no shape
+  // passes close to both stops in that order with a plausible length.
+  List<LatLng>? _sliceShape(List<BusShape> shapes, LatLng from, LatLng to,
+      List<LatLng> googlePoints) {
+    const maxStopOffset = 80.0; // m — stops sit on the kerb, not the centreline
+    final googleLength = _pathLength(googlePoints);
+    List<LatLng>? best;
+    var bestError = double.infinity;
+    for (final shape in shapes) {
+      final pts = shape.points.map((p) => LatLng(p.lat, p.lon)).toList();
+      final a = _projectOnPath(pts, from, 0);
+      if (a == null || a.dist > maxStopOffset) continue;
+      // Alighting must come after boarding along the route
+      final b = _projectOnPath(pts, to, a.pos);
+      if (b == null || b.dist > maxStopOffset) continue;
+      final slice = [
+        a.point,
+        ...pts.sublist(a.index + 1, b.index + 1),
+        b.point
+      ];
+      // Guards against the wrong direction or a loop matched the long way round
+      final length = _pathLength(slice);
+      if (googleLength > 0 &&
+          (length > googleLength * 1.6 || length < googleLength * 0.6)) {
+        continue;
+      }
+      final error = a.dist + b.dist;
+      if (error < bestError) {
+        bestError = error;
+        best = slice;
+      }
+    }
+    return best;
+  }
+
+  // Closest point on [path] to [p], searching only at or after position
+  // [minPos] (segment index + fraction along it). Distances in metres.
+  ({int index, double pos, LatLng point, double dist})? _projectOnPath(
+      List<LatLng> path, LatLng p, double minPos) {
+    final cosLat = math.cos(p.latitude * math.pi / 180);
+    const mPerDeg = 111320.0;
+    ({int index, double pos, LatLng point, double dist})? best;
+    for (var i = minPos.floor(); i < path.length - 1; i++) {
+      final a = path[i], b = path[i + 1];
+      // Local flat coordinates (metres) relative to p
+      final ax = (a.longitude - p.longitude) * cosLat * mPerDeg;
+      final ay = (a.latitude - p.latitude) * mPerDeg;
+      final bx = (b.longitude - p.longitude) * cosLat * mPerDeg;
+      final by = (b.latitude - p.latitude) * mPerDeg;
+      final dx = bx - ax, dy = by - ay;
+      final len2 = dx * dx + dy * dy;
+      var t = len2 == 0 ? 0.0 : (-(ax * dx + ay * dy) / len2).clamp(0.0, 1.0);
+      if (i == minPos.floor()) t = math.max(t, minPos - i);
+      final cx = ax + dx * t, cy = ay + dy * t;
+      final dist = math.sqrt(cx * cx + cy * cy);
+      if (best == null || dist < best.dist) {
+        best = (
+          index: i,
+          pos: i + t,
+          point: LatLng(a.latitude + (b.latitude - a.latitude) * t,
+              a.longitude + (b.longitude - a.longitude) * t),
+          dist: dist,
+        );
+      }
+    }
+    return best;
+  }
+
+  double _pathLength(List<LatLng> path) {
+    var total = 0.0;
+    for (var i = 0; i < path.length - 1; i++) {
+      total += haversineDistance(path[i].latitude, path[i].longitude,
+          path[i + 1].latitude, path[i + 1].longitude);
+    }
+    return total;
+  }
+
+  // Concatenates each step's own polyline instead of using overview_polyline,
+  // which Google deliberately simplifies for small-scale display and cuts
+  // corners at turns. Per-step polylines follow the actual road geometry.
+  List<LatLng> _extractDetailedPolyline(Map<String, dynamic> leg) =>
+      _joinPaths((leg['steps'] as List<dynamic>)
+          .map((step) => _decodeStepPolyline(step as Map<String, dynamic>)));
 
   List<LatLng> _decodePolyline(String encoded) {
     final points = <LatLng>[];
@@ -1177,6 +1430,27 @@ class _MapScreenState extends ConsumerState<MapScreen>
       }
     }
 
+    // Footprint trails along walking legs, a badge where each bus is boarded
+    if (_selectedDestination != null) {
+      for (var i = 0; i < _directionsSegments.length; i++) {
+        final seg = _directionsSegments[i];
+        if (seg.mode == _SegMode.walk) {
+          markers.addAll(_footprintMarkers(seg.points, 'walk$i'));
+        } else if (seg.mode == _SegMode.bus && seg.line != null) {
+          final badge = _busBadgeIcons[seg.line!];
+          if (badge == null) continue;
+          markers.add(Marker(
+            markerId: MarkerId('board_$i'),
+            position: seg.points.first,
+            icon: badge,
+            anchor: const Offset(0.5, 0.5),
+            zIndexInt: 5,
+            consumeTapEvents: true,
+          ));
+        }
+      }
+    }
+
     // Destination pin (when a location is selected from search)
     if (_selectedDestination != null) {
       markers.add(Marker(
@@ -1191,9 +1465,10 @@ class _MapScreenState extends ConsumerState<MapScreen>
     return markers;
   }
 
-  // ─── Build route polylines from TDX stop positions ────────────────────────
+  // ─── Build route polylines ─────────────────────────────────────────────────
 
-  Set<Polyline> _buildPolylines(List<RouteStop> stops) {
+  Set<Polyline> _buildPolylines(
+      List<RouteStop> stops, List<BusShape> shapes) {
     final polylines = <Polyline>{};
 
     // TDX bus route polyline — only the selected direction when in route detail
@@ -1203,40 +1478,144 @@ class _MapScreenState extends ConsumerState<MapScreen>
           .toList()
         ..sort((a, b) => a.stopSequence.compareTo(b.stopSequence));
 
-      if (dirStops.isNotEmpty) {
-        polylines.add(Polyline(
-          polylineId: const PolylineId('route_selected'),
-          points: dirStops
+      // Follow the road shape when TDX has one; else join the stops
+      final shape = _shapeForDirection(shapes, _selectedDirection!);
+      final points = shape != null
+          ? shape.points.map((p) => LatLng(p.lat, p.lon)).toList()
+          : dirStops
               .map((s) => LatLng(s.stopPosition.lat, s.stopPosition.lon))
-              .toList(),
-          color: AppColors.blue,
+              .toList();
+      if (points.length >= 2) {
+        polylines.addAll(_busLine('route_selected', points));
+      }
+    }
+
+    // Directions route, styled per leg
+    for (var i = 0; i < _directionsSegments.length; i++) {
+      final seg = _directionsSegments[i];
+      switch (seg.mode) {
+        case _SegMode.bus:
+          polylines.addAll(_busLine('dir_$i', seg.points));
+        case _SegMode.car:
+          polylines.add(Polyline(
+            polylineId: PolylineId('dir_$i'),
+            points: seg.points,
+            color: AppColors.yellow,
+            width: 5,
+            startCap: Cap.roundCap,
+            endCap: Cap.roundCap,
+            jointType: JointType.round,
+          ));
+        case _SegMode.walk:
+          // Faint guide under the footprints so the path still reads when
+          // zoomed far out and the prints thin out
+          polylines.add(Polyline(
+            polylineId: PolylineId('dir_$i'),
+            points: seg.points,
+            color: _walkColor.withValues(alpha: 0.28),
+            width: 2,
+            startCap: Cap.roundCap,
+            endCap: Cap.roundCap,
+            jointType: JointType.round,
+          ));
+      }
+    }
+
+    return polylines;
+  }
+
+  // A bus ride: the accent line on a dark casing, so it stands out from both
+  // the map and the thin walking guide.
+  List<Polyline> _busLine(String id, List<LatLng> points) => [
+        Polyline(
+          polylineId: PolylineId('${id}_casing'),
+          points: points,
+          color: AppPalette.onAccent,
+          width: 9,
+          startCap: Cap.roundCap,
+          endCap: Cap.roundCap,
+          jointType: JointType.round,
+          zIndex: 1,
+        ),
+        Polyline(
+          polylineId: PolylineId(id),
+          points: points,
+          color: AppColors.green,
           width: 5,
           startCap: Cap.roundCap,
           endCap: Cap.roundCap,
           jointType: JointType.round,
+          zIndex: 2,
+        ),
+      ];
+
+  BusShape? _shapeForDirection(List<BusShape> shapes, int direction) {
+    for (final shape in shapes) {
+      if (shape.direction == direction) return shape;
+    }
+    // A single undivided shape (e.g. a loop route) serves both directions
+    if (shapes.length == 1 && shapes.first.direction == null) {
+      return shapes.first;
+    }
+    return null;
+  }
+
+  // Footprints every ~16 dp along [path], each turned to face the way of
+  // travel and alternating left / right foot.
+  List<Marker> _footprintMarkers(List<LatLng> path, String id) {
+    if (_footLeftIcon == null || _footRightIcon == null || path.length < 2) {
+      return const [];
+    }
+    final metresPerDp = 156543.03392 *
+        math.cos(path.first.latitude * math.pi / 180) /
+        math.pow(2, _footprintZoom);
+    final length = _pathLength(path);
+    // Cap the count so a long walk seen zoomed out stays light on markers
+    final spacing = math.max(metresPerDp * 16, length / 250);
+
+    final markers = <Marker>[];
+    var nextAt = spacing / 2; // distance along the path of the next print
+    var travelled = 0.0;
+    for (var i = 0; i < path.length - 1; i++) {
+      final a = path[i], b = path[i + 1];
+      final segLength =
+          haversineDistance(a.latitude, a.longitude, b.latitude, b.longitude);
+      if (segLength == 0) continue;
+      final bearing = _bearing(a, b);
+      while (nextAt <= travelled + segLength) {
+        final t = (nextAt - travelled) / segLength;
+        final n = markers.length;
+        markers.add(Marker(
+          markerId: MarkerId('${id}_$n'),
+          position: LatLng(a.latitude + (b.latitude - a.latitude) * t,
+              a.longitude + (b.longitude - a.longitude) * t),
+          icon: n.isEven ? _footLeftIcon! : _footRightIcon!,
+          anchor: const Offset(0.5, 0.5),
+          rotation: bearing,
+          flat: true, // turns with the map so prints stay along the street
+          consumeTapEvents: true,
+          zIndexInt: 3,
         ));
+        nextAt += spacing;
       }
+      travelled += segLength;
     }
+    return markers;
+  }
 
-    // Directions route — colour depends on transport mode
-    if (_directionsPolyline.isNotEmpty) {
-      final routeColor = _transportMode == 'car'
-          ? AppColors.yellow
-          : _transportMode == 'walk'
-              ? AppColors.blue
-              : AppColors.green;
-      polylines.add(Polyline(
-        polylineId: const PolylineId('directions'),
-        points: _directionsPolyline,
-        color: routeColor,
-        width: 5,
-        startCap: Cap.roundCap,
-        endCap: Cap.roundCap,
-        jointType: JointType.round,
-      ));
-    }
+  // Compass bearing from [a] to [b], degrees clockwise from north.
+  double _bearing(LatLng a, LatLng b) {
+    final dLon =
+        (b.longitude - a.longitude) * math.cos(a.latitude * math.pi / 180);
+    final dLat = b.latitude - a.latitude;
+    return (math.atan2(dLon, dLat) * 180 / math.pi + 360) % 360;
+  }
 
-    return polylines;
+  void _ensureBusBadge(String line) {
+    if (_busBadgeIcons.containsKey(line)) return;
+    _createBusBadgeIcon(line).then((icon) {
+      if (mounted) setState(() => _busBadgeIcons[line] = icon);
+    });
   }
 
   @override
@@ -1246,13 +1625,16 @@ class _MapScreenState extends ConsumerState<MapScreen>
 
     final List<BusRealTime> buses;
     final List<RouteStop> routeStops;
+    final List<BusShape> routeShapes;
     if (_selectedRoute != null) {
       final routeParams = (routeName: _selectedRoute!, city: defaultCity);
       buses = ref.watch(busPositionsProvider(routeParams)).value ?? [];
       routeStops = ref.watch(routeStopsProvider(routeParams)).value ?? [];
+      routeShapes = ref.watch(routeShapesProvider(routeParams)).value ?? [];
     } else {
       buses = const [];
       routeStops = const [];
+      routeShapes = const [];
     }
 
     List<NearbyStop> sortedNearby = [];
@@ -1317,7 +1699,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
 
     final markers = _buildMarkers(buses, routeStops, nearbyStations);
     _saveSession();
-    final polylines = _buildPolylines(routeStops);
+    final polylines = _buildPolylines(routeStops, routeShapes);
 
     return Scaffold(
       backgroundColor: AppColors.bg,
@@ -1350,6 +1732,13 @@ class _MapScreenState extends ConsumerState<MapScreen>
                   controller.animateCamera(
                     CameraUpdate.newLatLngZoom(_userLocation!, 14),
                   );
+                }
+              },
+              onCameraMove: (position) => _cameraZoom = position.zoom,
+              onCameraIdle: () {
+                final zoom = (_cameraZoom * 2).round() / 2;
+                if (zoom != _footprintZoom) {
+                  setState(() => _footprintZoom = zoom);
                 }
               },
               myLocationEnabled: _locationGranted,
@@ -2594,4 +2983,91 @@ Future<BitmapDescriptor> _createStopDotIcon(double size,
     width: size,
     height: size,
   );
+}
+
+// ─── Route leg icons ─────────────────────────────────────────────────────────
+
+/// One footprint, toes pointing up (north), drawn to the left or right of the
+/// icon's centre so alternating feet form a natural two-track trail. Placed as
+/// a flat marker rotated to the walking direction.
+Future<BitmapDescriptor> _createFootprintIcon({required bool left}) async {
+  const scale = 3.0;
+  const w = 14.0, h = 18.0; // logical px
+  final recorder = ui.PictureRecorder();
+  final canvas = Canvas(recorder)..scale(scale);
+
+  final cx = left ? w / 2 - 2.6 : w / 2 + 2.6;
+  // Toes splay slightly outward, like a real step
+  canvas.translate(cx, h / 2);
+  canvas.rotate((left ? -7 : 7) * math.pi / 180);
+  canvas.translate(-cx, -h / 2);
+
+  final sole = Path()
+    ..addOval(Rect.fromLTRB(cx - 2.4, 1, cx + 2.4, 9.6)) // ball of the foot
+    ..addOval(Rect.fromLTRB(cx - 1.8, 10.6, cx + 1.8, 16.6)); // heel
+  canvas.drawPath(
+      sole,
+      Paint()
+        ..color = AppPalette.canvas.withValues(alpha: 0.7)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.2);
+  canvas.drawPath(sole, Paint()..color = _walkColor);
+
+  final image = await recorder
+      .endRecording()
+      .toImage((w * scale).round(), (h * scale).round());
+  final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+  return BitmapDescriptor.bytes(bytes!.buffer.asUint8List(),
+      width: w, height: h);
+}
+
+/// Pill with a bus glyph and the route number, marking where to board.
+Future<BitmapDescriptor> _createBusBadgeIcon(String line) async {
+  const scale = 3.0;
+  const height = 22.0, padX = 7.0, glyph = 13.0, gap = 3.0, border = 1.5;
+  const icon = Icons.directions_bus_rounded;
+
+  final glyphPainter = TextPainter(
+    text: TextSpan(
+      text: String.fromCharCode(icon.codePoint),
+      style: TextStyle(
+        fontFamily: icon.fontFamily,
+        package: icon.fontPackage,
+        fontSize: glyph,
+        color: AppPalette.onAccent,
+      ),
+    ),
+    textDirection: TextDirection.ltr,
+  )..layout();
+  final textPainter = TextPainter(
+    text: TextSpan(
+      text: line,
+      style: const TextStyle(
+        fontSize: 11.5,
+        fontWeight: FontWeight.w800,
+        color: AppPalette.onAccent,
+      ),
+    ),
+    textDirection: TextDirection.ltr,
+  )..layout();
+
+  final width = padX * 2 + glyphPainter.width + gap + textPainter.width;
+  final recorder = ui.PictureRecorder();
+  final canvas = Canvas(recorder)..scale(scale);
+  final pill = RRect.fromRectAndRadius(
+      Rect.fromLTWH(0, 0, width, height), const Radius.circular(height / 2));
+  canvas.drawRRect(pill, Paint()..color = AppPalette.onAccent);
+  canvas.drawRRect(pill.deflate(border), Paint()..color = AppPalette.accent);
+  glyphPainter.paint(canvas, Offset(padX, (height - glyphPainter.height) / 2));
+  textPainter.paint(
+      canvas,
+      Offset(
+          padX + glyphPainter.width + gap, (height - textPainter.height) / 2));
+
+  final image = await recorder
+      .endRecording()
+      .toImage((width * scale).ceil(), (height * scale).ceil());
+  final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+  return BitmapDescriptor.bytes(bytes!.buffer.asUint8List(),
+      width: (width * scale).ceil() / scale, height: height);
 }

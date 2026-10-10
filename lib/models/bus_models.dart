@@ -246,3 +246,39 @@ class NearbyStop {
 
   const NearbyStop({required this.stop, required this.distance});
 }
+
+// The road path a route actually drives, from TDX's Bus/Shape endpoint.
+// Drawing this instead of straight lines between stops keeps the line on the
+// road through turns.
+class BusShape {
+  final LocalizedName routeName;
+  final int? direction; // null when TDX doesn't split the shape by direction
+  final List<BusPosition> points;
+
+  const BusShape({
+    required this.routeName,
+    required this.direction,
+    required this.points,
+  });
+
+  factory BusShape.fromJson(Map<String, dynamic> json) => BusShape(
+        routeName: json['RouteName'] is Map<String, dynamic>
+            ? LocalizedName.fromJson(json['RouteName'] as Map<String, dynamic>)
+            : const LocalizedName(zhTw: '', en: ''),
+        direction: json['Direction'] as int?,
+        points: _parseWkt(json['Geometry'] as String? ?? ''),
+      );
+
+  // Geometry is WKT: "LINESTRING(lon lat, lon lat, ...)" or a
+  // MULTILINESTRING of several such runs, which are joined in order.
+  static List<BusPosition> _parseWkt(String wkt) {
+    final pair = RegExp(r'(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)');
+    return pair
+        .allMatches(wkt)
+        .map((m) => BusPosition(
+              lat: double.parse(m.group(2)!),
+              lon: double.parse(m.group(1)!),
+            ))
+        .toList();
+  }
+}
