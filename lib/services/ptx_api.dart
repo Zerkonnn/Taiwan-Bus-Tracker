@@ -74,6 +74,8 @@ class PtxApi {
       return const Duration(seconds: 30);
     }
     if (path.contains('Stop/City')) return const Duration(minutes: 2);
+    // Road geometry practically never changes
+    if (path.contains('/Shape/')) return const Duration(hours: 12);
     return const Duration(minutes: 5);
   }
 
@@ -312,6 +314,24 @@ class PtxApi {
       }
     }
     return stops;
+  }
+
+  // ─── Route Shapes ──────────────────────────────────────────────────────────
+
+  // The road path of each direction of [routeName]. Empty in demo mode or
+  // when TDX has no shape for the route — callers fall back to stop-to-stop.
+  Future<List<BusShape>> getRouteShapes(String routeName, String city) async {
+    if (_demoMode) return [];
+    final shapes = await _getList(
+        '/Shape/City/$city/${Uri.encodeComponent(routeName)}',
+        {},
+        BusShape.fromJson);
+    // Like Route, Shape matches names by substring ("5" also returns "15")
+    return shapes
+        .where((s) =>
+            (s.routeName.zhTw == routeName || s.routeName.en == routeName) &&
+            s.points.length >= 2)
+        .toList();
   }
 
   Future<List<BusStop>> getNearbyStops(double lat, double lon, String city,

@@ -89,6 +89,14 @@ final routeStopsProvider =
       PtxApi.instance.getRouteStops(params.routeName, params.city),
 );
 
+// ─── Route Shapes (static road geometry, cached 12 h) ────────────────────────
+
+final routeShapesProvider =
+    FutureProvider.autoDispose.family<List<BusShape>, RouteParams>(
+  (ref, params) =>
+      PtxApi.instance.getRouteShapes(params.routeName, params.city),
+);
+
 // ─── Nearby Stops ─────────────────────────────────────────────────────────────
 
 typedef NearbyParams = ({double lat, double lon, String city});
