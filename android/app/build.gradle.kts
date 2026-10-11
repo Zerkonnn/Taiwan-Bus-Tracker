@@ -42,3 +42,10 @@ android {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // google_mlkit_text_recognition only declares the non-Latin models as
+    // compileOnly — without this, TextRecognitionScript.chinese throws
+    // NoClassDefFoundError on the main thread and the app crashes after a photo.
+    implementation("com.google.mlkit:text-recognition-chinese:16.0.1")
+}

@@ -35,10 +35,6 @@
         <meta-data
             android:name="com.google.android.geo.API_KEY"
             android:value="AIzaSyDUPCYVGg1mKjrkzbBtSsaopGXbY8SDj18"/>
-        <!-- Bundle Chinese OCR model with the app so it works offline -->
-        <meta-data
-            android:name="com.google.mlkit.vision.DEPENDENCIES"
-            android:value="ocr_chinese,ocr"/>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data
