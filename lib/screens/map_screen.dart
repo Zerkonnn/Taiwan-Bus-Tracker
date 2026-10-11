@@ -350,6 +350,8 @@ class _MapScreenState extends ConsumerState<MapScreen>
   final _sheetController = DraggableScrollableController();
   final _busSearchController = TextEditingController();
   String _busSearchQuery = '';
+  // Waits for the user to stop typing so "52" doesn't also search "5"
+  Timer? _busSearchDebounce;
   int _sheetTab = 0; // 0 = nearby, 1 = search
   bool _inRouteDetail = false;
   int? _selectedDirection; // 0 = outbound 去程, 1 = inbound 回程
@@ -514,6 +516,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
   @override
   void dispose() {
     _debounce?.cancel();
+    _busSearchDebounce?.cancel();
     _mapController?.dispose();
     _searchController.dispose();
     _searchFocus.dispose();
@@ -2641,6 +2644,12 @@ class _MapScreenState extends ConsumerState<MapScreen>
     );
   }
 
+  // Chinese keyboards often type full-width digits (５２), which TDX doesn't
+  // match — convert them to ASCII and drop stray spaces.
+  static String _normalizeRouteQuery(String raw) => String.fromCharCodes(
+        raw.trim().runes.map((c) => c >= 0xFF10 && c <= 0xFF19 ? c - 0xFEE0 : c),
+      ).replaceAll(' ', '');
+
   Widget _buildSearchTab(List<String> favourites) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2660,7 +2669,14 @@ class _MapScreenState extends ConsumerState<MapScreen>
                   color: AppPalette.textSecondary, size: 20),
               isDense: true,
             ),
-            onChanged: (v) => setState(() => _busSearchQuery = v.trim()),
+            onChanged: (v) {
+              _busSearchDebounce?.cancel();
+              _busSearchDebounce =
+                  Timer(const Duration(milliseconds: 400), () {
+                if (!mounted) return;
+                setState(() => _busSearchQuery = _normalizeRouteQuery(v));
+              });
+            },
           ),
         ),
         if (_busSearchQuery.isNotEmpty)

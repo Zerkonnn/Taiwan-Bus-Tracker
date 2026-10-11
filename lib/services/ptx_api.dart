@@ -7,6 +7,7 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../models/bus_models.dart';
 
@@ -21,6 +22,8 @@ bool get _demoMode =>
 const _authUrl =
     'https://tdx.transportdata.tw/auth/realms/TDXConnect/protocol/openid-connect/token';
 const _baseUrl = 'https://tdx.transportdata.tw/api/basic/v2/Bus';
+// Without a timeout a stalled mobile connection hangs the throttle forever
+const _requestTimeout = Duration(seconds: 15);
 
 class _CacheEntry {
   final List<dynamic> data;
@@ -95,8 +98,9 @@ class PtxApi {
         'client_id': _clientId,
         'client_secret': _clientSecret,
       },
-    );
+    ).timeout(_requestTimeout);
     if (response.statusCode != 200) {
+      debugPrint('PTX auth failed ${response.statusCode}: ${response.body}');
       throw Exception('PTX auth failed (${response.statusCode})');
     }
     final data = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
@@ -126,13 +130,33 @@ class PtxApi {
     // Throttle: only one request at a time, 350 ms apart
     await _throttle.acquire();
     try {
-      const maxRetries = 2;
+      const maxRetries = 3;
       for (int attempt = 0; attempt < maxRetries; attempt++) {
-        final token = await _getAccessToken();
-        final response = await http.get(uri,
-            headers: {'Authorization': 'Bearer $token', 'Accept-Encoding': 'gzip'});
+        final http.Response response;
+        try {
+          final token = await _getAccessToken();
+          response = await http.get(uri, headers: {
+            'Authorization': 'Bearer $token',
+            'Accept-Encoding': 'gzip'
+          }).timeout(_requestTimeout);
+        } catch (e) {
+          // Flaky mobile data / DNS / TLS hiccups: retry instead of failing
+          debugPrint('PTX $path attempt ${attempt + 1} failed: $e');
+          if (attempt < maxRetries - 1) {
+            await Future.delayed(Duration(seconds: attempt + 1));
+            continue;
+          }
+          rethrow;
+        }
 
+        if (response.statusCode == 401) {
+          // Token revoked or expired early (e.g. device clock drift) — refetch
+          debugPrint('PTX $path got 401, refreshing token');
+          _accessToken = null;
+          if (attempt < maxRetries - 1) continue;
+        }
         if (response.statusCode == 429) {
+          debugPrint('PTX $path rate limited (429)');
           // Return stale cache silently — avoids blocking with retries and keeps
           // the UI showing the last known data rather than throwing an error.
           final stale = _cache[cacheKey];
@@ -148,6 +172,8 @@ class PtxApi {
           throw Exception('Rate limited');
         }
         if (response.statusCode != 200) {
+          debugPrint('PTX $path error ${response.statusCode}: '
+              '${utf8.decode(response.bodyBytes, allowMalformed: true)}');
           throw Exception('PTX API error ${response.statusCode}');
         }
         final List<dynamic> list = jsonDecode(utf8.decode(response.bodyBytes)) as List<dynamic>;

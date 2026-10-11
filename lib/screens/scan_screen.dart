@@ -30,13 +30,41 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
   // handler running outside the build phase) can read the current language.
   AppLanguage _lang = AppLanguage.zh;
 
-  Future<void> _capture(ImageSource source) async {
-    try {
-      final picker = ImagePicker();
-      final picked = await picker.pickImage(source: source, imageQuality: 85);
-      if (picked == null) return;
+  @override
+  void initState() {
+    super.initState();
+    _recoverLostPhoto();
+  }
 
-      final imageFile = File(picked.path);
+  // Low-memory phones may kill the app while the camera app is open. Android
+  // then restarts us without the photo — pick it back up here.
+  Future<void> _recoverLostPhoto() async {
+    if (!Platform.isAndroid) return;
+    try {
+      final lost = await ImagePicker().retrieveLostData();
+      if (lost.isEmpty || lost.file == null || !mounted) return;
+      await _scan(File(lost.file!.path));
+    } catch (_) {}
+  }
+
+  Future<void> _capture(ImageSource source) async {
+    final XFile? picked;
+    try {
+      // Cap the size: full-res 50 MP photos can run the phone out of memory,
+      // and sign text is still easily readable at 1920 px.
+      picked = await ImagePicker().pickImage(
+          source: source, maxWidth: 1920, maxHeight: 1920, imageQuality: 85);
+    } catch (e) {
+      debugPrint('Image pick failed: $e');
+      setState(() => _errorMessage = AppStrings.t(_lang, 'couldNotProcessImage'));
+      return;
+    }
+    if (picked == null || !mounted) return;
+    await _scan(File(picked.path));
+  }
+
+  Future<void> _scan(File imageFile) async {
+    try {
       setState(() {
         _image = imageFile;
         _scanning = true;
@@ -68,6 +96,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
         } catch (_) {}
       }
 
+      if (!mounted) return;
       setState(() {
         _scanning = false;
         _detectedNumbers = numbers;
@@ -78,6 +107,8 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
         }
       });
     } catch (e) {
+      debugPrint('OCR failed: $e');
+      if (!mounted) return;
       setState(() {
         _scanning = false;
         _errorMessage = AppStrings.t(_lang, 'couldNotProcessImage');
