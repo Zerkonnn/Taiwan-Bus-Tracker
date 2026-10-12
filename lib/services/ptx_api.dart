@@ -9,6 +9,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/bus_models.dart';
 
 const _clientId = 'd1229288-f2fa2a2e-6ce6-45d6';
@@ -115,17 +116,20 @@ class PtxApi {
     Map<String, String> extraParams,
     T Function(Map<String, dynamic>) fromJson,
   ) async {
+    final list = await _getJson(path, extraParams);
+    return list.map((e) => fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  // Raw JSON array for [path], served from cache while fresh.
+  Future<List<dynamic>> _getJson(
+      String path, Map<String, String> extraParams) async {
     final uri = Uri.parse('$_baseUrl$path')
         .replace(queryParameters: {'\$format': 'JSON', ...extraParams});
     final cacheKey = uri.toString();
 
     // Return cached result if still fresh — no network call needed
     final cached = _cache[cacheKey];
-    if (cached != null && cached.isValid) {
-      return cached.data
-          .map((e) => fromJson(e as Map<String, dynamic>))
-          .toList();
-    }
+    if (cached != null && cached.isValid) return cached.data;
 
     // Throttle: only one request at a time, 350 ms apart
     await _throttle.acquire();
@@ -160,13 +164,13 @@ class PtxApi {
           // Return stale cache silently — avoids blocking with retries and keeps
           // the UI showing the last known data rather than throwing an error.
           final stale = _cache[cacheKey];
-          if (stale != null) {
-            return stale.data
-                .map((e) => fromJson(e as Map<String, dynamic>))
-                .toList();
-          }
-          if (attempt < maxRetries - 1) {
-            await Future.delayed(const Duration(seconds: 3));
+          if (stale != null) return stale.data;
+          // TDX counts calls per minute and says when the window reopens —
+          // a fixed 3 s wait just burned the retries while it was still shut.
+          final reset =
+              int.tryParse(response.headers['ratelimit-reset'] ?? '') ?? 3;
+          if (attempt < maxRetries - 1 && reset <= 20) {
+            await Future.delayed(Duration(seconds: reset + 1));
             continue;
           }
           throw Exception('Rate limited');
@@ -178,7 +182,7 @@ class PtxApi {
         }
         final List<dynamic> list = jsonDecode(utf8.decode(response.bodyBytes)) as List<dynamic>;
         _cache[cacheKey] = _CacheEntry(list, DateTime.now().add(_ttlFor(path)));
-        return list.map((e) => fromJson(e as Map<String, dynamic>)).toList();
+        return list;
       }
       throw Exception('PTX API request failed after $maxRetries attempts');
     } finally {
@@ -188,23 +192,117 @@ class PtxApi {
 
   // ─── Route Search ──────────────────────────────────────────────────────────
 
+  // TDX caps our key at 5 calls a minute, shared with ETA/bus polling, so a
+  // /Route/{name} call per search usually came back 429 ("Search failed").
+  // Instead the city's whole route list (~400 routes, 15 KB gzipped) is
+  // downloaded once, kept on the phone, and searched locally.
+  static const _routeListTtl = Duration(hours: 12);
+  final Map<String, ({List<BusRoute> routes, DateTime expires})> _routeLists =
+      {};
+  final Map<String, Future<List<BusRoute>>> _routeListLoads = {};
+
   Future<List<BusRoute>> searchRoutes(String routeName, String city) async {
     if (_demoMode) return Future.value(_demoSearchRoutes(routeName));
-    final results = await _getList(
-        '/Route/City/$city/${Uri.encodeComponent(routeName)}',
-        {},
-        BusRoute.fromJson);
-    // PTX returns every route whose name *contains* the query (e.g. "52" also
-    // matches "152", "252"...). Put exact matches first so the route the user
-    // actually searched for isn't buried under unrelated substring matches.
-    bool isExact(BusRoute r) =>
-        r.routeName.zhTw == routeName || r.routeName.en == routeName;
-    results.sort((a, b) {
-      final aExact = isExact(a), bExact = isExact(b);
-      if (aExact != bExact) return aExact ? -1 : 1;
-      return 0;
-    });
-    return results;
+    final query = routeName.trim().toUpperCase();
+    if (query.isEmpty) return [];
+    final all = await _cityRoutes(city);
+    // Same "name contains query" matching the TDX endpoint did, but ranked:
+    // exact match, then prefix ("52" → 52, 520, 152…), then shorter names.
+    int rank(BusRoute r) {
+      final zh = r.routeName.zhTw.toUpperCase();
+      final en = r.routeName.en.toUpperCase();
+      if (zh == query || en == query) return 0;
+      if (zh.startsWith(query) || en.startsWith(query)) return 1;
+      return 2;
+    }
+
+    return all
+        .where((r) =>
+            r.routeName.zhTw.toUpperCase().contains(query) ||
+            r.routeName.en.toUpperCase().contains(query))
+        .toList()
+      ..sort((a, b) {
+        final byRank = rank(a).compareTo(rank(b));
+        if (byRank != 0) return byRank;
+        final byLength =
+            a.routeName.zhTw.length.compareTo(b.routeName.zhTw.length);
+        if (byLength != 0) return byLength;
+        return a.routeName.zhTw.compareTo(b.routeName.zhTw);
+      });
+  }
+
+  /// Starts loading [city]'s route list in the background so the first
+  /// search doesn't wait for the download.
+  void prefetchRoutes(String city) {
+    if (_demoMode) return;
+    _cityRoutes(city).catchError((_) => <BusRoute>[]);
+  }
+
+  Future<List<BusRoute>> _cityRoutes(String city) async {
+    final mem = _routeLists[city];
+    if (mem != null && DateTime.now().isBefore(mem.expires)) return mem.routes;
+    // Searches typed while the list downloads share the one request
+    final load = _routeListLoads[city] ??= _loadCityRoutes(city);
+    try {
+      return await load;
+    } finally {
+      _routeListLoads.remove(city);
+    }
+  }
+
+  Future<List<BusRoute>> _loadCityRoutes(String city) async {
+    final prefsKey = 'ptxRouteList_$city';
+    final prefs = await SharedPreferences.getInstance();
+    List<dynamic>? saved;
+    DateTime? savedAt;
+    try {
+      final raw = prefs.getString(prefsKey);
+      if (raw != null) {
+        final m = jsonDecode(raw) as Map<String, dynamic>;
+        saved = m['routes'] as List<dynamic>;
+        savedAt = DateTime.parse(m['savedAt'] as String);
+      }
+    } catch (_) {} // corrupt entry — just download again
+
+    List<BusRoute> parse(List<dynamic> list) =>
+        list.map((e) => BusRoute.fromJson(e as Map<String, dynamic>)).toList();
+
+    if (saved != null && savedAt != null) {
+      final expires = savedAt.add(_routeListTtl);
+      if (DateTime.now().isBefore(expires)) {
+        final routes = parse(saved);
+        _routeLists[city] = (routes: routes, expires: expires);
+        return routes;
+      }
+    }
+
+    try {
+      final fresh = await _getJson('/Route/City/$city', {
+        '\$select': 'RouteUID,RouteID,RouteName,DepartureStopNameZh,'
+            'DestinationStopNameZh,City,CityCode',
+      });
+      final routes = parse(fresh);
+      final now = DateTime.now();
+      _routeLists[city] = (routes: routes, expires: now.add(_routeListTtl));
+      try {
+        await prefs.setString(prefsKey,
+            jsonEncode({'savedAt': now.toIso8601String(), 'routes': fresh}));
+      } catch (e) {
+        debugPrint('Could not save route list: $e');
+      }
+      return routes;
+    } catch (e) {
+      // Routes rarely change — an outdated list beats a failed search. Retry
+      // the download in a few minutes rather than on every keystroke.
+      if (saved == null) rethrow;
+      debugPrint('Route list refresh failed, using saved copy: $e');
+      final routes = parse(saved);
+      _routeLists[city] = (
+        routes: routes,
+        expires: DateTime.now().add(const Duration(minutes: 5)),
+      );
+      return routes;
+    }
   }
 
   // ─── Live Bus Positions ────────────────────────────────────────────────────
@@ -273,7 +371,7 @@ class PtxApi {
         final response = await http.get(uri, headers: {
           'Authorization': 'Bearer $token',
           'Accept-Encoding': 'gzip',
-        });
+        }).timeout(_requestTimeout);
 
         if (response.statusCode == 429) {
           final stale = _cache[cacheKey];
