@@ -96,9 +96,9 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
           await recognizer.processImage(InputImage.fromFile(imageFile));
       await recognizer.close();
 
-      final numbers = _extractBusNumbers(recognized.text);
+      final candidates = _extractRouteCandidates(recognized.text);
 
-      if (numbers.isEmpty) {
+      if (candidates.isEmpty) {
         setState(() {
           _scanning = false;
           _errorMessage = AppStrings.t(_lang, 'noRouteNumbersFound');
@@ -106,22 +106,39 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
         return;
       }
 
+      // Signs also carry times, phone numbers and stop codes — keep only the
+      // numbers that are exactly a route name, so a sign listing 5 routes
+      // gives those 5 (and "5" shows route 5, not 50, 51, 52…).
       final routeMap = <String, List<BusRoute>>{};
-      for (final num in numbers) {
-        try {
-          final routes = await PtxApi.instance.searchRoutes(num, defaultCity);
-          if (routes.isNotEmpty) routeMap[num] = routes;
-        } catch (_) {}
+      try {
+        for (final token in candidates) {
+          final routes = await PtxApi.instance.searchRoutes(token, defaultCity);
+          final exact = routes
+              .where((r) =>
+                  r.routeName.zhTw.toUpperCase() == token ||
+                  r.routeName.en.toUpperCase() == token)
+              .toList();
+          if (exact.isNotEmpty) routeMap[token] = exact;
+        }
+      } catch (e) {
+        // Route list not downloaded yet and no connection
+        debugPrint('Scan route lookup failed: $e');
+        if (!mounted) return;
+        setState(() {
+          _scanning = false;
+          _errorMessage = AppStrings.t(_lang, 'searchFailedTryAgain');
+        });
+        return;
       }
 
       if (!mounted) return;
       setState(() {
         _scanning = false;
-        _detectedNumbers = numbers;
+        _detectedNumbers = routeMap.keys.toList()..sort(_compareRouteNames);
         _routesByNumber = routeMap;
         if (routeMap.isEmpty) {
           _errorMessage = AppStrings.numbersDetectedNoneMatched(
-              _lang, numbers.join(', '));
+              _lang, candidates.join(', '));
         }
       });
     } catch (e) {
@@ -134,25 +151,29 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
     }
   }
 
-  static List<String> _extractBusNumbers(String text) {
-    // Match standalone 1–3 digit numbers in range 1–500, plus BRT
-    final re = RegExp(r'(?<!\d)(BRT|\d{1,3})(?!\d)');
+  // Anything on the sign shaped like a Taichung route name: 1–3 digits with an
+  // optional colour prefix or letter suffix (52, 305W, 70A, 黃1, 綠2) and BRT.
+  // Whether it's really a route is checked against the route list afterwards.
+  static List<String> _extractRouteCandidates(String text) {
+    // Digits touching ':' or '-' belong to a time (22:30) or phone number
+    final re = RegExp(r'(?<![\dA-Z:\-])(BRT|[黃綠]?\d{1,3}[A-Z]?)(?![\dA-Z:\-])');
     final found = <String>{};
-    for (final m in re.allMatches(text)) {
-      final val = m.group(0)!;
-      if (val == 'BRT') {
-        found.add(val);
-      } else {
-        final n = int.tryParse(val);
-        if (n != null && n >= 1 && n <= 500) found.add(val);
-      }
+    for (final m in re.allMatches(text.toUpperCase())) {
+      final val = m.group(1)!;
+      // "06" from "06:00" is never a route name
+      if (RegExp(r'^[黃綠]?0').hasMatch(val)) continue;
+      found.add(val);
     }
-    return found.toList()
-      ..sort((a, b) {
-        final ai = int.tryParse(a) ?? 9999;
-        final bi = int.tryParse(b) ?? 9999;
-        return ai.compareTo(bi);
-      });
+    return found.toList()..sort(_compareRouteNames);
+  }
+
+  // Numeric order (5, 52, 305W, 811), colour routes and BRT after plain ones
+  static int _compareRouteNames(String a, String b) {
+    int key(String s) => RegExp(r'^\d+').hasMatch(s)
+        ? int.parse(RegExp(r'^\d+').firstMatch(s)!.group(0)!)
+        : 100000;
+    final byNumber = key(a).compareTo(key(b));
+    return byNumber != 0 ? byNumber : a.compareTo(b);
   }
 
   @override
@@ -278,15 +299,6 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
       return _Placeholder(lang: _lang);
     }
 
-    final found = _routesByNumber.keys.toList()
-      ..sort((a, b) {
-        final ai = int.tryParse(a) ?? 9999;
-        final bi = int.tryParse(b) ?? 9999;
-        return ai.compareTo(bi);
-      });
-    final notFound =
-        _detectedNumbers.where((n) => !_routesByNumber.containsKey(n)).toList();
-
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
       children: [
@@ -296,7 +308,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
               color: AppColors.textMuted, fontSize: 11, letterSpacing: 1.2),
         ),
         const SizedBox(height: 12),
-        ...found.expand(
+        ..._detectedNumbers.expand(
           (busNum) => [
             _RouteSection(
                 busNumber: busNum,
@@ -305,19 +317,6 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
             const SizedBox(height: 16),
           ],
         ),
-        if (notFound.isNotEmpty) ...[
-          Text(
-            AppStrings.t(_lang, 'notFoundInTaichung'),
-            style: const TextStyle(
-                color: AppColors.textMuted, fontSize: 11, letterSpacing: 1.2),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: notFound.map((n) => BusBadge(routeName: n)).toList(),
-          ),
-        ],
       ],
     );
   }
