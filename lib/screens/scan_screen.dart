@@ -11,6 +11,7 @@ import '../services/ptx_api.dart';
 import '../utils/app_strings.dart';
 import '../utils/theme.dart';
 import '../widgets/bus_badge.dart';
+import 'camera_capture_screen.dart';
 
 class ScanScreen extends ConsumerStatefulWidget {
   const ScanScreen({super.key});
@@ -45,6 +46,23 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
       if (lost.isEmpty || lost.file == null || !mounted) return;
       await _scan(File(lost.file!.path));
     } catch (_) {}
+  }
+
+  // In-app camera rather than image_picker's camera, which leaves the app in
+  // the background where Android may kill it (see CameraCaptureScreen).
+  Future<void> _takePhoto() async {
+    final result = await Navigator.push<Object?>(context,
+        MaterialPageRoute(builder: (_) => const CameraCaptureScreen()));
+    if (!mounted || result == null) return;
+    if (result is CameraCaptureError) {
+      setState(() => _errorMessage = AppStrings.t(
+          _lang,
+          result == CameraCaptureError.permissionDenied
+              ? 'cameraPermissionDenied'
+              : 'cameraUnavailable'));
+      return;
+    }
+    await _scan(File(result as String));
   }
 
   Future<void> _capture(ImageSource source) async {
@@ -176,7 +194,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                     icon: Icons.camera_alt_rounded,
                     label: AppStrings.t(_lang, 'camera'),
                     enabled: !_scanning,
-                    onTap: () => _capture(ImageSource.camera),
+                    onTap: _takePhoto,
                   ),
                   const SizedBox(width: 12),
                   _ActionBtn(

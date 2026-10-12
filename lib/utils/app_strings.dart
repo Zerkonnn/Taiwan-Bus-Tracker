@@ -196,6 +196,14 @@ class AppStrings {
       AppLanguage.en: 'Could not process image. Please try again.',
       AppLanguage.zh: '無法處理圖片，請再試一次。'
     },
+    'cameraPermissionDenied': {
+      AppLanguage.en: 'Camera access is off. Allow it in Settings, or pick a photo from the gallery.',
+      AppLanguage.zh: '相機權限未開啟，請至設定允許，或從相簿選擇照片。'
+    },
+    'cameraUnavailable': {
+      AppLanguage.en: 'Camera could not start. Try picking a photo from the gallery.',
+      AppLanguage.zh: '無法啟動相機，請改從相簿選擇照片。'
+    },
     'notFoundInTaichung': {
       AppLanguage.en: 'NOT FOUND IN TAICHUNG',
       AppLanguage.zh: '台中未找到符合路線'

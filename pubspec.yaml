@@ -27,6 +27,8 @@ dependencies:
 
   # Camera scan feature
   image_picker: ^1.1.2
+  # In-app capture — the external camera app let Android kill us mid-photo
+  camera: ^0.12.0+2
   google_mlkit_text_recognition: ^0.13.0
 
   # Voice User Interface (VUI) — mic input + spoken responses

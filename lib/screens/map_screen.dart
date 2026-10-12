@@ -389,6 +389,8 @@ class _MapScreenState extends ConsumerState<MapScreen>
   @override
   void initState() {
     super.initState();
+    // Route search runs on a locally cached route list — warm it up now
+    PtxApi.instance.prefetchRoutes(defaultCity);
     final locationReady = _requestLocation();
     _restoreSession(locationReady);
     _createStopDotIcon(14).then((icon) {
