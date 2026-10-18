@@ -42,3 +42,7 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  # Route list for offline search (see PtxApi.searchRoutes)
+  assets:
+    - assets/routes_Taichung.json

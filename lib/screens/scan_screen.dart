@@ -245,6 +245,9 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                     _image!,
                     fit: BoxFit.cover,
                     width: double.infinity,
+                    // Decoding the full 1080p photo just for a 110 px strip
+                    // wastes memory the OCR step needs
+                    cacheWidth: 800,
                   ),
                 ),
               ),

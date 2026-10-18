@@ -8,6 +8,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/bus_models.dart';
@@ -192,14 +193,16 @@ class PtxApi {
 
   // ─── Route Search ──────────────────────────────────────────────────────────
 
-  // TDX caps our key at 5 calls a minute, shared with ETA/bus polling, so a
-  // /Route/{name} call per search usually came back 429 ("Search failed").
-  // Instead the city's whole route list (~400 routes, 15 KB gzipped) is
-  // downloaded once, kept on the phone, and searched locally.
+  // TDX caps our key at 5 calls a minute, shared by every phone running the
+  // app and by ETA/bus polling, so even the one-off route list download kept
+  // coming back 429 ("Search failed"). The list ships inside the app
+  // (assets/routes_<city>.json) and search runs on it with no network at all;
+  // a fresher copy is fetched in the background when the quota allows.
+  // Regenerate the asset with /Route/City/<city> if routes change a lot.
   static const _routeListTtl = Duration(hours: 12);
-  final Map<String, ({List<BusRoute> routes, DateTime expires})> _routeLists =
-      {};
+  final Map<String, List<BusRoute>> _routeLists = {};
   final Map<String, Future<List<BusRoute>>> _routeListLoads = {};
+  final Set<String> _refreshing = {};
 
   Future<List<BusRoute>> searchRoutes(String routeName, String city) async {
     if (_demoMode) return Future.value(_demoSearchRoutes(routeName));
@@ -231,8 +234,7 @@ class PtxApi {
       });
   }
 
-  /// Starts loading [city]'s route list in the background so the first
-  /// search doesn't wait for the download.
+  /// Loads [city]'s route list early so the first search is instant.
   void prefetchRoutes(String city) {
     if (_demoMode) return;
     _cityRoutes(city).catchError((_) => <BusRoute>[]);
@@ -240,8 +242,7 @@ class PtxApi {
 
   Future<List<BusRoute>> _cityRoutes(String city) async {
     final mem = _routeLists[city];
-    if (mem != null && DateTime.now().isBefore(mem.expires)) return mem.routes;
-    // Searches typed while the list downloads share the one request
+    if (mem != null) return mem;
     final load = _routeListLoads[city] ??= _loadCityRoutes(city);
     try {
       return await load;
@@ -250,59 +251,78 @@ class PtxApi {
     }
   }
 
+  static List<BusRoute> _parseRoutes(List<dynamic> list) =>
+      list.map((e) => BusRoute.fromJson(e as Map<String, dynamic>)).toList();
+
+  // Saved download if there is one, else the copy bundled with the app.
+  // Only reaches the network (and can only fail) for a city with neither.
   Future<List<BusRoute>> _loadCityRoutes(String city) async {
-    final prefsKey = 'ptxRouteList_$city';
     final prefs = await SharedPreferences.getInstance();
     List<dynamic>? saved;
     DateTime? savedAt;
     try {
-      final raw = prefs.getString(prefsKey);
+      final raw = prefs.getString('ptxRouteList_$city');
       if (raw != null) {
         final m = jsonDecode(raw) as Map<String, dynamic>;
         saved = m['routes'] as List<dynamic>;
         savedAt = DateTime.parse(m['savedAt'] as String);
       }
-    } catch (_) {} // corrupt entry — just download again
+    } catch (_) {} // corrupt entry — fall back to the bundled list
 
-    List<BusRoute> parse(List<dynamic> list) =>
-        list.map((e) => BusRoute.fromJson(e as Map<String, dynamic>)).toList();
-
-    if (saved != null && savedAt != null) {
-      final expires = savedAt.add(_routeListTtl);
-      if (DateTime.now().isBefore(expires)) {
-        final routes = parse(saved);
-        _routeLists[city] = (routes: routes, expires: expires);
-        return routes;
-      }
-    }
-
-    try {
-      final fresh = await _getJson('/Route/City/$city', {
-        '\$select': 'RouteUID,RouteID,RouteName,DepartureStopNameZh,'
-            'DestinationStopNameZh,City,CityCode',
-      });
-      final routes = parse(fresh);
-      final now = DateTime.now();
-      _routeLists[city] = (routes: routes, expires: now.add(_routeListTtl));
+    List<dynamic>? bundled;
+    if (saved == null) {
       try {
-        await prefs.setString(prefsKey,
-            jsonEncode({'savedAt': now.toIso8601String(), 'routes': fresh}));
-      } catch (e) {
-        debugPrint('Could not save route list: $e');
-      }
-      return routes;
-    } catch (e) {
-      // Routes rarely change — an outdated list beats a failed search. Retry
-      // the download in a few minutes rather than on every keystroke.
-      if (saved == null) rethrow;
-      debugPrint('Route list refresh failed, using saved copy: $e');
-      final routes = parse(saved);
-      _routeLists[city] = (
-        routes: routes,
-        expires: DateTime.now().add(const Duration(minutes: 5)),
-      );
+        bundled = jsonDecode(
+                await rootBundle.loadString('assets/routes_$city.json'))
+            as List<dynamic>;
+      } catch (_) {} // no bundled list for this city
+    }
+
+    final source = saved ?? bundled;
+    if (source == null) {
+      final routes = _parseRoutes(await _downloadRoutes(city, prefs));
+      _routeLists[city] = routes;
       return routes;
     }
+    final routes = _parseRoutes(source);
+    _routeLists[city] = routes;
+    if (savedAt == null ||
+        DateTime.now().isAfter(savedAt.add(_routeListTtl))) {
+      _refreshInBackground(city, prefs);
+    }
+    return routes;
+  }
+
+  Future<List<dynamic>> _downloadRoutes(
+      String city, SharedPreferences prefs) async {
+    final fresh = await _getJson('/Route/City/$city', {
+      '\$select': 'RouteUID,RouteID,RouteName,DepartureStopNameZh,'
+          'DestinationStopNameZh,City,CityCode',
+    });
+    try {
+      await prefs.setString(
+          'ptxRouteList_$city',
+          jsonEncode(
+              {'savedAt': DateTime.now().toIso8601String(), 'routes': fresh}));
+    } catch (e) {
+      debugPrint('Could not save route list: $e');
+    }
+    return fresh;
+  }
+
+  // Waits a minute first so the map's own startup calls get the quota.
+  void _refreshInBackground(String city, SharedPreferences prefs) {
+    if (!_refreshing.add(city)) return;
+    Future.delayed(const Duration(minutes: 1), () async {
+      try {
+        final fresh = await _downloadRoutes(city, prefs);
+        if (fresh.isNotEmpty) _routeLists[city] = _parseRoutes(fresh);
+      } catch (e) {
+        debugPrint('Route list refresh failed, keeping current copy: $e');
+      } finally {
+        _refreshing.remove(city);
+      }
+    });
   }
 
   // ─── Live Bus Positions ────────────────────────────────────────────────────
