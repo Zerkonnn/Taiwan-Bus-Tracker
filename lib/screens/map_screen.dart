@@ -316,6 +316,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
 
   LatLng? _userLocation;
   bool _locationGranted = false;
+  StreamSubscription<Position>? _positionSub;
   String? _selectedRoute;
 
   List<_LocationResult> _suggestions = [];
@@ -517,6 +518,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
 
   @override
   void dispose() {
+    _positionSub?.cancel();
     _debounce?.cancel();
     _busSearchDebounce?.cancel();
     _mapController?.dispose();
@@ -652,7 +654,24 @@ class _MapScreenState extends ConsumerState<MapScreen>
         _mapController?.animateCamera(CameraUpdate.newLatLngZoom(loc, 14));
         _loadFrequentTrips();
       }
+      _watchLocation();
     } catch (_) {}
+  }
+
+  // Keep _userLocation current as the user moves. The 100 m filter keeps
+  // nearbyStopsProvider (keyed on lat/lon) from refetching TDX on GPS jitter.
+  void _watchLocation() {
+    _positionSub?.cancel();
+    _positionSub = Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.medium,
+        distanceFilter: 100,
+      ),
+    ).listen((pos) {
+      if (mounted) {
+        setState(() => _userLocation = LatLng(pos.latitude, pos.longitude));
+      }
+    }, onError: (_) {});
   }
 
   void _onSearchChanged(String value) {
