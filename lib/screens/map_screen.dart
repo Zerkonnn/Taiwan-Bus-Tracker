@@ -674,6 +674,32 @@ class _MapScreenState extends ConsumerState<MapScreen>
     }, onError: (_) {});
   }
 
+  // The stream only reports every 100 m, so ask for a fresh high-accuracy
+  // fix — jump to the last known spot first so the tap feels instant.
+  Future<void> _recenterOnUser() async {
+    if (!_locationGranted) {
+      await _requestLocation();
+      return;
+    }
+    if (_userLocation != null) {
+      _mapController?.animateCamera(
+        CameraUpdate.newLatLngZoom(_userLocation!, 17),
+      );
+    }
+    try {
+      final pos = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 10),
+        ),
+      );
+      if (!mounted) return;
+      final loc = LatLng(pos.latitude, pos.longitude);
+      setState(() => _userLocation = loc);
+      _mapController?.animateCamera(CameraUpdate.newLatLngZoom(loc, 17));
+    } catch (_) {}
+  }
+
   void _onSearchChanged(String value) {
     _debounce?.cancel();
     final q = value.trim();
@@ -2159,13 +2185,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
               child: MapControlButton(
                 icon: Icons.my_location_rounded,
                 tooltip: AppStrings.t(_lang, 'myLocation'),
-                onTap: () {
-                  if (_userLocation != null) {
-                    _mapController?.animateCamera(
-                      CameraUpdate.newLatLngZoom(_userLocation!, 15),
-                    );
-                  }
-                },
+                onTap: _recenterOnUser,
               ),
             ),
           if (_sheetExtent < 0.5 || _isListening)
